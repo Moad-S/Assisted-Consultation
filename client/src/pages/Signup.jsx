@@ -1,6 +1,19 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { auth } from "../auth"; // the helper that saves token in localStorage
+import { auth } from "../auth";
+
+async function jsonOrThrow(res, fallback = "Request failed") {
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {
+    /* ignore parse error */
+  }
+  if (!res.ok) {
+    throw new Error((data && data.error) || fallback);
+  }
+  return data;
+}
 
 export default function Signup() {
   const nav = useNavigate();
@@ -9,22 +22,45 @@ export default function Signup() {
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  // Already logged in? Go straight to dashboard.
+  useEffect(() => {
+    if (auth.isLoggedIn()) {
+      const r = auth.role();
+      if (r === "patient") nav("/patient", { replace: true });
+      else if (r === "doctor") nav("/doctor", { replace: true });
+    }
+  }, [nav]);
 
   async function onSubmit(e) {
     e.preventDefault();
     setError("");
+
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters.");
+      return;
+    }
+
+    setBusy(true);
     try {
       const res = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, role, displayName }),
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+          role,
+          displayName: displayName || null,
+        }),
       });
-      if (!res.ok) throw new Error((await res.json()).error || "Signup failed");
-      const data = await res.json();
+      const data = await jsonOrThrow(res, "Signup failed");
       auth.save(data); // stores token + role
-      nav(role === "doctor" ? "/doctor" : "/patient");
+      nav(role === "doctor" ? "/doctor" : "/patient", { replace: true });
     } catch (err) {
-      setError(err.message);
+      setError(err.message || "Signup failed");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -64,6 +100,7 @@ export default function Signup() {
             value={role}
             onChange={(e) => setRole(e.target.value)}
             style={{ width: "100%", padding: 8 }}
+            disabled={busy}
           >
             <option value="patient">Patient</option>
             <option value="doctor">Doctor</option>
@@ -79,6 +116,7 @@ export default function Signup() {
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             style={{ width: "100%", padding: 8 }}
+            disabled={busy}
           />
         </label>
         <br />
@@ -92,7 +130,9 @@ export default function Signup() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            autoComplete="username"
             style={{ width: "100%", padding: 8 }}
+            disabled={busy}
           />
         </label>
         <br />
@@ -106,14 +146,16 @@ export default function Signup() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
+            autoComplete="new-password"
             style={{ width: "100%", padding: 8 }}
+            disabled={busy}
           />
         </label>
         <br />
         <br />
 
-        <button type="submit" style={{ padding: "8px 12px" }}>
-          Sign up
+        <button type="submit" style={{ padding: "8px 12px" }} disabled={busy}>
+          {busy ? "Creating..." : "Sign up"}
         </button>
         {error && <p style={{ color: "tomato" }}>{error}</p>}
       </form>
