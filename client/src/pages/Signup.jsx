@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { auth } from "../auth";
 
@@ -6,12 +6,8 @@ async function jsonOrThrow(res, fallback = "Request failed") {
   let data = null;
   try {
     data = await res.json();
-  } catch {
-    /* ignore parse error */
-  }
-  if (!res.ok) {
-    throw new Error((data && data.error) || fallback);
-  }
+  } catch {}
+  if (!res.ok) throw new Error((data && data.error) || fallback);
   return data;
 }
 
@@ -24,14 +20,8 @@ export default function Signup() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // Already logged in? Go straight to dashboard.
-  useEffect(() => {
-    if (auth.isLoggedIn()) {
-      const r = auth.role();
-      if (r === "patient") nav("/patient", { replace: true });
-      else if (r === "doctor") nav("/doctor", { replace: true });
-    }
-  }, [nav]);
+  const already = auth.isLoggedIn();
+  const currentRole = auth.role();
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -55,13 +45,18 @@ export default function Signup() {
         }),
       });
       const data = await jsonOrThrow(res, "Signup failed");
-      auth.save(data); // stores token + role
+      auth.save(data);
       nav(role === "doctor" ? "/doctor" : "/patient", { replace: true });
     } catch (err) {
       setError(err.message || "Signup failed");
     } finally {
       setBusy(false);
     }
+  }
+
+  function signOutAndStay() {
+    auth.clear();
+    nav("/signup", { replace: true });
   }
 
   return (
@@ -92,6 +87,34 @@ export default function Signup() {
 
       <h1>Create an account</h1>
 
+      {already && (
+        <div
+          style={{
+            margin: "8px 0 16px",
+            padding: "10px 12px",
+            border: "1px solid #555",
+            borderRadius: 8,
+            background: "#1f1f1f",
+          }}
+        >
+          You’re currently signed in as <strong>{currentRole}</strong>.{" "}
+          <button
+            onClick={signOutAndStay}
+            style={{
+              marginLeft: 8,
+              border: "1px solid #444",
+              background: "#222",
+              color: "#fff",
+              padding: "4px 8px",
+              borderRadius: 8,
+              cursor: "pointer",
+            }}
+          >
+            Sign out to switch
+          </button>
+        </div>
+      )}
+
       <form onSubmit={onSubmit}>
         <label>
           Role
@@ -100,7 +123,7 @@ export default function Signup() {
             value={role}
             onChange={(e) => setRole(e.target.value)}
             style={{ width: "100%", padding: 8 }}
-            disabled={busy}
+            disabled={busy || already}
           >
             <option value="patient">Patient</option>
             <option value="doctor">Doctor</option>
@@ -116,7 +139,7 @@ export default function Signup() {
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             style={{ width: "100%", padding: 8 }}
-            disabled={busy}
+            disabled={busy || already}
           />
         </label>
         <br />
@@ -132,7 +155,7 @@ export default function Signup() {
             required
             autoComplete="username"
             style={{ width: "100%", padding: 8 }}
-            disabled={busy}
+            disabled={busy || already}
           />
         </label>
         <br />
@@ -148,13 +171,17 @@ export default function Signup() {
             required
             autoComplete="new-password"
             style={{ width: "100%", padding: 8 }}
-            disabled={busy}
+            disabled={busy || already}
           />
         </label>
         <br />
         <br />
 
-        <button type="submit" style={{ padding: "8px 12px" }} disabled={busy}>
+        <button
+          type="submit"
+          style={{ padding: "8px 12px" }}
+          disabled={busy || already}
+        >
           {busy ? "Creating..." : "Sign up"}
         </button>
         {error && <p style={{ color: "tomato" }}>{error}</p>}
