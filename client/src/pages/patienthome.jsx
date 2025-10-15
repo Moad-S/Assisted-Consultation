@@ -45,10 +45,52 @@ export default function PatientHome() {
       const s = await jsonOrThrow(res, "Could not start session");
       setSessionId(s.id);
       await loadMessages(s.id);
+
+      // (Optional) Kick off a greeting from the AI automatically:
+      // await askAI(s.id, "The session has started. Greet the patient briefly.");
     } catch (e) {
       alert(e.message || "Failed to start session");
     } finally {
       setBusy(false);
+    }
+  }
+
+  // Generic AI call (used after patient sends a message)
+  async function askAI(sid, userText) {
+    // draw a "typing…" placeholder so the UI feels responsive
+    const typingId = `temp-${Date.now()}`;
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: typingId,
+        sender: "ai",
+        content: "…",
+        created_at: new Date().toISOString(),
+      },
+    ]);
+
+    try {
+      const res = await fetch(`/api/ai/patient/chat/${sid}/reply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({ userText }),
+      });
+      const aiMsg = await jsonOrThrow(res, "AI reply failed");
+
+      // replace typing bubble with the real message
+      setMessages((prev) => prev.map((m) => (m.id === typingId ? aiMsg : m)));
+    } catch (err) {
+      // replace typing bubble with an error note
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === typingId
+            ? {
+                ...m,
+                content: `(AI error: ${err.message || "failed to reply"})`,
+              }
+            : m
+        )
+      );
     }
   }
 
@@ -105,16 +147,23 @@ export default function PatientHome() {
     }
     if (!text.trim()) return;
 
+    const userText = text;
     setBusy(true);
     try {
+      // 1) save the patient's message
       const res = await fetch(`/api/patient/chat/${sessionId}/message`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
-        body: JSON.stringify({ content: text }),
+        body: JSON.stringify({ content: userText }),
       });
       const m = await jsonOrThrow(res, "Could not send message");
       setMessages((prev) => [...prev, m]);
+
+      // clear the input box immediately
       setText("");
+
+      // 2) ask the AI to reply and append it
+      await askAI(sessionId, userText);
     } catch (e2) {
       alert(e2.message || "Send failed");
     } finally {
@@ -197,6 +246,7 @@ export default function PatientHome() {
           padding: 12,
           minHeight: 280,
           marginTop: 12,
+          background: "#141414",
         }}
       >
         {messages.map((m) => (
