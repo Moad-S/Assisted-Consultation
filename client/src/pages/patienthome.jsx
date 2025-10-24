@@ -1,31 +1,44 @@
-import { useEffect, useState } from "react";
+// client/src/pages/patienthome.jsx
+import { useEffect, useState, useMemo } from "react";
 import { auth } from "../auth";
 
 export default function PatientHome() {
   const token = auth.token();
+  const authHeader = { Authorization: `Bearer ${token}` };
+
   const [profile, setProfile] = useState(null);
+
   const [sessionId, setSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
+
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // ---- helpers --------------------------------------------------------------
+  // sessions list for the dropdown
+  const [sessions, setSessions] = useState([]);
+  const [sessionsBusy, setSessionsBusy] = useState(false);
+  const [pickId, setPickId] = useState(""); // selected session id from dropdown
 
-  const authHeader = { Authorization: `Bearer ${token}` };
+  const LS_KEY = "patient_active_session_id";
+
+  function fmt(dt) {
+    try {
+      return new Date(dt).toLocaleString();
+    } catch {
+      return dt;
+    }
+  }
 
   async function jsonOrThrow(res, fallbackMsg = "Request failed") {
     let data = null;
     try {
       data = await res.json();
-    } catch {
-      /* ignore parse errors; we'll throw generic below */
-    }
-    if (!res.ok) {
-      const msg = (data && data.error) || fallbackMsg;
-      throw new Error(msg);
-    }
+    } catch {}
+    if (!res.ok) throw new Error((data && data.error) || fallbackMsg);
     return data;
   }
+
+  // ------------------------- load helpers ------------------------------------
 
   async function loadMessages(sid) {
     const res = await fetch(`/api/patient/chat/${sid}/messages`, {
@@ -35,72 +48,44 @@ export default function PatientHome() {
     setMessages(msgs);
   }
 
-  async function startNewSession() {
-    setBusy(true);
+  function applySession(id) {
+    setSessionId(id);
+    if (id) {
+      localStorage.setItem(LS_KEY, String(id));
+      loadMessages(id).catch(() => {});
+    } else {
+      localStorage.removeItem(LS_KEY);
+      setMessages([]);
+    }
+  }
+
+  async function refreshSessionsList() {
+    setSessionsBusy(true);
     try {
-      const res = await fetch("/api/patient/chat/start", {
-        method: "POST",
+      const res = await fetch(`/api/patient/chat/history?limit=20`, {
         headers: authHeader,
       });
-      const s = await jsonOrThrow(res, "Could not start session");
-      setSessionId(s.id);
-      await loadMessages(s.id);
-
-      // (Optional) Kick off a greeting from the AI automatically:
-      // await askAI(s.id, "The session has started. Greet the patient briefly.");
-    } catch (e) {
-      alert(e.message || "Failed to start session");
+      const list = await jsonOrThrow(res, "Could not load sessions");
+      setSessions(list || []);
+      // if selected in dropdown no longer valid, reset
+      if (pickId && !list.some((s) => String(s.id) === String(pickId))) {
+        setPickId("");
+      }
+    } catch {
+      // ignore
     } finally {
-      setBusy(false);
+      setSessionsBusy(false);
     }
   }
 
-  // Generic AI call (used after patient sends a message)
-  async function askAI(sid, userText) {
-    // draw a "typing…" placeholder so the UI feels responsive
-    const typingId = `temp-${Date.now()}`;
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: typingId,
-        sender: "ai",
-        content: "…",
-        created_at: new Date().toISOString(),
-      },
-    ]);
+  // ------------------------- initial loads -----------------------------------
 
-    try {
-      const res = await fetch(`/api/ai/patient/chat/${sid}/reply`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeader },
-        body: JSON.stringify({ userText }),
-      });
-      const aiMsg = await jsonOrThrow(res, "AI reply failed");
-
-      // replace typing bubble with the real message
-      setMessages((prev) => prev.map((m) => (m.id === typingId ? aiMsg : m)));
-    } catch (err) {
-      // replace typing bubble with an error note
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === typingId
-            ? {
-                ...m,
-                content: `(AI error: ${err.message || "failed to reply"})`,
-              }
-            : m
-        )
-      );
-    }
-  }
-
-  // ---- initial profile load -------------------------------------------------
-
+  // Load profile
   useEffect(() => {
     (async () => {
       try {
         const res = await fetch("/api/patient/me", { headers: authHeader });
-        const data = await res.json(); // ok to be empty on first visit
+        const data = await res.json();
         setProfile(data || {});
       } catch {
         setProfile({});
@@ -109,31 +94,92 @@ export default function PatientHome() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  // ---- actions --------------------------------------------------------------
+  // On mount/refresh, restore active session and load the sessions list
+  useEffect(() => {
+    (async () => {
+      // try cached
+      const cached = localStorage.getItem(LS_KEY);
+      if (cached && !sessionId) {
+        const sid = Number(cached);
+        if (sid > 0) {
+          setSessionId(sid);
+          loadMessages(sid).catch(() => {});
+        }
+      }
+      // authoritative
+      try {
+        const res = await fetch("/api/patient/chat/active", {
+          headers: authHeader,
+        });
+        const { id } = await jsonOrThrow(res, "Could not check active session");
+        if (id && id !== sessionId) applySession(id);
+        if (!id && cached) localStorage.removeItem(LS_KEY);
+      } catch {}
+      // load list
+      refreshSessionsList();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
-  async function saveIntakeAndStart(e) {
-    e.preventDefault();
+  // Keep sessions list relatively fresh whenever the active session changes
+  useEffect(() => {
+    refreshSessionsList();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
+
+  // ------------------------- actions -----------------------------------------
+
+  async function startNewSession() {
     setBusy(true);
     try {
-      const form = new FormData(e.currentTarget);
-      const body = {
-        fullName: form.get("fullName"),
-        dateOfBirth: form.get("dateOfBirth"),
-        sex: form.get("sex"),
-      };
-
-      // save intake
-      let res = await fetch("/api/patient/profile", {
+      const res = await fetch("/api/patient/chat/start", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeader },
-        body: JSON.stringify(body),
+        headers: authHeader,
       });
-      await jsonOrThrow(res, "Could not save intake");
-
-      // start a session
-      await startNewSession();
+      const s = await jsonOrThrow(res, "Could not start session");
+      applySession(s.id);
     } catch (e) {
-      alert(e.message || "Failed to start");
+      alert(e.message || "Failed to start session");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function endSession() {
+    if (!sessionId) return;
+    setBusy(true);
+    try {
+      await jsonOrThrow(
+        await fetch(`/api/patient/chat/end`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeader },
+          body: JSON.stringify({ sessionId }),
+        }),
+        "Could not end session"
+      );
+      applySession(null);
+      await refreshSessionsList();
+    } catch (e) {
+      alert(e.message || "Failed to end session");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resumePicked() {
+    if (!pickId) return;
+    setBusy(true);
+    try {
+      const sid = Number(pickId);
+      const res = await fetch(`/api/patient/chat/${sid}/resume`, {
+        method: "POST",
+        headers: authHeader,
+      });
+      const s = await jsonOrThrow(res, "Could not resume session");
+      applySession(s.id);
+      setPickId("");
+    } catch (e) {
+      alert(e.message || "Resume failed");
     } finally {
       setBusy(false);
     }
@@ -142,28 +188,37 @@ export default function PatientHome() {
   async function sendMessage(e) {
     e.preventDefault();
     if (!sessionId) {
-      alert("Please start a new session first.");
+      alert("Please start a session first.");
       return;
     }
     if (!text.trim()) return;
 
-    const userText = text;
     setBusy(true);
     try {
-      // 1) save the patient's message
+      // Save patient message
       const res = await fetch(`/api/patient/chat/${sessionId}/message`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
-        body: JSON.stringify({ content: userText }),
+        body: JSON.stringify({ content: text }),
       });
       const m = await jsonOrThrow(res, "Could not send message");
       setMessages((prev) => [...prev, m]);
 
-      // clear the input box immediately
-      setText("");
+      // Ask AI to reply
+      try {
+        const aiRes = await fetch(`/api/ai/patient/chat/${sessionId}/reply`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeader },
+          body: JSON.stringify({ userText: text }),
+        });
+        const ai = await jsonOrThrow(aiRes, "AI reply failed");
+        setMessages((prev) => [...prev, ai]);
+      } catch (e) {
+        // If AI fails, still keep user's message; optionally surface a toast
+        console.error(e);
+      }
 
-      // 2) ask the AI to reply and append it
-      await askAI(sessionId, userText);
+      setText("");
     } catch (e2) {
       alert(e2.message || "Send failed");
     } finally {
@@ -171,14 +226,52 @@ export default function PatientHome() {
     }
   }
 
-  // ---- render ---------------------------------------------------------------
+  // ------------------------- derived data ------------------------------------
 
-  // intake first (no profile full_name saved yet and no active session)
+  const previousSessions = useMemo(() => {
+    // show ended sessions and any not-equal active ones
+    return (sessions || []).filter((s) => s.id !== sessionId);
+  }, [sessions, sessionId]);
+
+  // ------------------------- render ------------------------------------------
+
+  // Intake first if no profile yet AND no active session
   if (!profile || (!profile.full_name && !sessionId)) {
     return (
       <main style={{ fontFamily: "system-ui", padding: 24, maxWidth: 520 }}>
         <h1>Patient Intake</h1>
-        <form onSubmit={saveIntakeAndStart}>
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setBusy(true);
+            try {
+              const form = new FormData(e.currentTarget);
+              const body = {
+                fullName: form.get("fullName"),
+                dateOfBirth: form.get("dateOfBirth"),
+                sex: form.get("sex"),
+              };
+
+              await jsonOrThrow(
+                await fetch("/api/patient/profile", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    ...authHeader,
+                  },
+                  body: JSON.stringify(body),
+                }),
+                "Could not save intake"
+              );
+
+              await startNewSession();
+            } catch (e) {
+              alert(e.message || "Failed to start");
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
           <label>
             Full name
             <br />
@@ -230,30 +323,76 @@ export default function PatientHome() {
     );
   }
 
-  // chat UI
+  // Chat UI
   return (
     <main style={{ fontFamily: "system-ui", padding: 24, maxWidth: 900 }}>
       <h1>Patient Chat</h1>
-      {!sessionId && (
-        <button onClick={startNewSession} disabled={busy}>
-          {busy ? "Starting..." : "Start New Session"}
+
+      {/* controls row */}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 12,
+          alignItems: "center",
+          marginBottom: 12,
+        }}
+      >
+        <span style={{ opacity: 0.85 }}>
+          Current session: <strong>#{sessionId ?? "—"}</strong>
+        </span>
+
+        <button onClick={endSession} disabled={busy || !sessionId}>
+          End Session
         </button>
-      )}
+
+        <button onClick={startNewSession} disabled={busy}>
+          Start Another Session
+        </button>
+
+        {/* Previous sessions dropdown */}
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <select
+            value={pickId}
+            onChange={(e) => setPickId(e.target.value)}
+            disabled={sessionsBusy || busy || previousSessions.length === 0}
+            style={{ minWidth: 260, padding: 6 }}
+          >
+            <option value="">
+              {sessionsBusy
+                ? "Loading sessions…"
+                : previousSessions.length === 0
+                ? "No previous sessions"
+                : "Select a previous session…"}
+            </option>
+            {previousSessions.map((s) => (
+              <option key={s.id} value={s.id}>
+                #{s.id} · {s.status} · {fmt(s.created_at)}
+              </option>
+            ))}
+          </select>
+          <button onClick={resumePicked} disabled={!pickId || busy}>
+            Resume
+          </button>
+          <button onClick={refreshSessionsList} disabled={sessionsBusy || busy}>
+            Refresh
+          </button>
+        </div>
+      </div>
+
       <div
         style={{
           border: "1px solid #444",
           borderRadius: 8,
           padding: 12,
           minHeight: 280,
-          marginTop: 12,
-          background: "#141414",
         }}
       >
         {messages.map((m) => (
           <div key={m.id} style={{ margin: "6px 0" }}>
             <strong>{m.sender}:</strong> {m.content}
             <small style={{ opacity: 0.6, marginLeft: 8 }}>
-              {new Date(m.created_at).toLocaleString()}
+              {fmt(m.created_at)}
             </small>
           </div>
         ))}
@@ -261,6 +400,7 @@ export default function PatientHome() {
           <p style={{ opacity: 0.7 }}>No messages yet.</p>
         )}
       </div>
+
       <form
         onSubmit={sendMessage}
         style={{ marginTop: 12, display: "flex", gap: 8 }}
@@ -270,7 +410,7 @@ export default function PatientHome() {
           onChange={(e) => setText(e.target.value)}
           style={{ flex: 1, padding: 8 }}
           placeholder={
-            sessionId ? "Type your message..." : "Start a session first"
+            sessionId ? "Type your message..." : "Start or resume a session"
           }
           disabled={busy || !sessionId}
         />

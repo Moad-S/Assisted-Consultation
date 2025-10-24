@@ -52,7 +52,7 @@ export default function Login() {
 
   function signOutAndStay() {
     auth.clear();
-    // Just rerender this page; the form becomes usable
+    // When this page is rerendered; the form becomes usable
     nav(`/login/${role}`, { replace: true });
   }
 

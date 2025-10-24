@@ -5,25 +5,25 @@ const { pool } = require("../db");
 const { requireAuth, requireRole } = require("../middleware/authz");
 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+
+//  Model + prompt config (backend-only) ---
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-
-// Use a working model (from /api/ai/ping). Fallback is fast & cheap.
 const MODEL_NAME = process.env.GEMINI_MODEL || "gemini-2.0-flash-lite";
+const ENV_SYSTEM_PROMPT = (process.env.GEMINI_SYSTEM_PROMPT || "").trim();
 
-// --- helper: verify the session belongs to the logged-in patient (no join needed)
-async function verifyPatientOwnsSession(patientUserId, sessionId) {
+// Ensure session belongs to this patient and is active
+async function getOwnedSession(patientUserId, sessionId) {
   const { rows } = await pool.query(
-    `SELECT 1
+    `SELECT id, status
        FROM care_ai.chat_sessions
-      WHERE id = $1 AND patient_id = $2
-      LIMIT 1`,
+      WHERE id = $1 AND patient_id = $2`,
     [sessionId, patientUserId]
   );
-  return rows.length > 0;
+  return rows[0] || null;
 }
 
 // POST /api/ai/patient/chat/:sessionId/reply
-// Body: { userText: string }
+// Body: { userText: string }  <-- no systemPrompt here; backend-only
 router.post(
   "/patient/chat/:sessionId/reply",
   requireAuth,
@@ -32,16 +32,18 @@ router.post(
     try {
       const sessionId = Number(req.params.sessionId);
       const { userText } = req.body || {};
-
       if (!sessionId || !userText || !userText.trim()) {
         return res.status(400).json({ error: "Missing sessionId or userText" });
       }
 
-      // ensure ownership
-      const owns = await verifyPatientOwnsSession(req.user.sub, sessionId);
-      if (!owns) return res.status(403).json({ error: "Forbidden" });
+      // Ownership + active check
+      const owned = await getOwnedSession(req.user.sub, sessionId);
+      if (!owned) return res.status(404).json({ error: "Session not found" });
+      if (owned.status && owned.status !== "active") {
+        return res.status(400).json({ error: "Session is not active" });
+      }
 
-      // load recent history (patient + ai only)
+      // Load short history (patient + ai only)
       const { rows: historyRows } = await pool.query(
         `SELECT sender, content
            FROM care_ai.chat_messages
@@ -58,23 +60,40 @@ router.post(
           parts: [{ text: m.content }],
         }));
 
-      // talk to Gemini
-      const model = genAI.getGenerativeModel({ model: MODEL_NAME });
-      const chat = model.startChat({ history });
+      // Build model with backend-only system instruction 
+      const systemInstruction =
+        ENV_SYSTEM_PROMPT.length > 0 ? ENV_SYSTEM_PROMPT : undefined;
 
+      const model = genAI.getGenerativeModel(
+        systemInstruction
+          ? { model: MODEL_NAME, systemInstruction }
+          : { model: MODEL_NAME }
+      );
+
+      // Fallback for older SDKs: inject a pseudo system message up front
+      const historyForChat =
+        systemInstruction && systemInstruction.length > 0
+          ? [
+              {
+                role: "user",
+                parts: [{ text: `SYSTEM PROMPT:\n${systemInstruction}` }],
+              },
+              ...history,
+            ]
+          : history;
+
+      const chat = model.startChat({ history: historyForChat });
+
+      // Send latest user message
       const result = await chat.sendMessage(userText);
 
-      // robust text extraction across SDKs
+      // Robust text extraction across SDK versions
       const reply =
         result?.response?.text?.() ||
-        (result?.response?.candidates?.[0]?.content?.parts || [])
-          .map((p) => p.text)
-          .filter(Boolean)
-          .join("\n")
-          .trim() ||
+        result?.response?.candidates?.[0]?.content?.parts?.[0]?.text ||
         "(no response)";
 
-      // persist the AI message
+      // Save AI reply
       const { rows: saved } = await pool.query(
         `INSERT INTO care_ai.chat_messages (session_id, sender, content)
          VALUES ($1, 'ai', $2)
@@ -84,7 +103,7 @@ router.post(
 
       return res.status(201).json(saved[0]);
     } catch (err) {
-      console.error("AI reply error:", err?.response?.data || err);
+      console.error("AI reply error:", err);
       return res.status(500).json({ error: "AI reply failed" });
     }
   }

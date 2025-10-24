@@ -50,7 +50,7 @@ export const auth = {
 
   isExpired() {
     const exp = this.load()?.exp;
-    if (!exp) return false; // no exp => treat as non-expiring for dev
+    if (!exp) return false; // no exp means,treat as non-expiring for dev
     const nowSec = Math.floor(Date.now() / 1000);
     return nowSec >= exp;
   },
