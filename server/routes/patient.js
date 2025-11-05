@@ -3,15 +3,24 @@ const router = require("express").Router();
 const { pool } = require("../db");
 const { requireAuth, requireRole } = require("../middleware/authz");
 
+// ⬇️ NEW: background summarizer (created earlier in server/ai/summarizer.js)
+let summarizeSession = null;
+try {
+  ({ summarizeSession } = require("../ai/summarizer"));
+} catch {
+  // If the file isn't present yet, we just skip (no crash).
+  summarizeSession = null;
+}
+
 /** Get current patient's profile (intake fields) */
 router.get("/me", requireAuth, requireRole("patient"), async (req, res) => {
   const userId = req.user.sub;
   const { rows } = await pool.query(
     `
     SELECT u.id, u.email, u.display_name, p.full_name, p.date_of_birth, p.sex
-    FROM care_ai.users u
-    JOIN care_ai.patients p ON p.user_id = u.id
-    WHERE u.id = $1
+      FROM care_ai.users u
+      JOIN care_ai.patients p ON p.user_id = u.id
+     WHERE u.id = $1
   `,
     [userId]
   );
@@ -35,9 +44,9 @@ router.post(
     await pool.query(
       `
     UPDATE care_ai.patients
-       SET full_name = COALESCE($2, full_name),
+       SET full_name     = COALESCE($2, full_name),
            date_of_birth = COALESCE($3, date_of_birth),
-           sex = COALESCE($4, sex)
+           sex           = COALESCE($4, sex)
      WHERE user_id = $1
   `,
       [userId, fullName || null, dateOfBirth || null, sex || null]
@@ -47,7 +56,12 @@ router.post(
   }
 );
 
-/** Helper: end any active session(s) for this patient (id optional to scope) */
+/**
+ * Helper: end any active session(s) for this patient.
+ * If sessionId is provided, scope to that row.
+ * Returns the list of ended session IDs.
+ * Also triggers background summarization for each ended session.
+ */
 async function endActiveSessionForPatient(patientId, sessionId = null) {
   const params = [patientId];
   let where = `patient_id = $1 AND status = 'active'`;
@@ -55,7 +69,7 @@ async function endActiveSessionForPatient(patientId, sessionId = null) {
     params.push(sessionId);
     where += ` AND id = $2`;
   }
-  // ended_at column is optional – set it if present, otherwise only flip status
+
   const q = `
     UPDATE care_ai.chat_sessions
        SET status = 'ended',
@@ -64,7 +78,20 @@ async function endActiveSessionForPatient(patientId, sessionId = null) {
      RETURNING id;
   `;
   const { rows } = await pool.query(q, params);
-  return rows.map((r) => r.id);
+  const endedIds = rows.map((r) => r.id);
+
+  // Fire-and-forget summarization so the request isn't blocked
+  if (summarizeSession && endedIds.length) {
+    for (const sid of endedIds) {
+      setImmediate(() =>
+        summarizeSession(sid).catch((e) =>
+          console.error("[summarize] failed for sid", sid, e)
+        )
+      );
+    }
+  }
+
+  return endedIds;
 }
 
 /** Start a new chat session – ends any active one first */
@@ -74,8 +101,11 @@ router.post(
   requireRole("patient"),
   async (req, res) => {
     const userId = req.user.sub;
+
+    // End any current active sessions (and summarize them in background)
     await endActiveSessionForPatient(userId, null);
 
+    // Create a new active session
     const ins = await pool.query(
       `
     INSERT INTO care_ai.chat_sessions (patient_id, status)
@@ -146,7 +176,10 @@ router.get(
   }
 );
 
-/** Resume an older session (make it active) */
+/**
+ * Resume an older session (make it active again).
+ * (You already had this behavior — we keep it intact.)
+ */
 router.post(
   "/chat/:sessionId/resume",
   requireAuth,
@@ -164,7 +197,7 @@ router.post(
     if (!own.length)
       return res.status(404).json({ error: "Session not found" });
 
-    // End any currently active session (except the one we’re resuming)
+    // End any currently active session (except the one we’re activating)
     await pool.query(
       `
       UPDATE care_ai.chat_sessions
@@ -174,7 +207,7 @@ router.post(
       [userId, sid]
     );
 
-    // Mark the chosen session as active (clear ended_at if it exists)
+    // Mark the chosen session as active (clear ended_at if present)
     const { rows } = await pool.query(
       `
       UPDATE care_ai.chat_sessions

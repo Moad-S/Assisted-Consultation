@@ -1,6 +1,7 @@
 // client/src/pages/patienthome.jsx
 import { useEffect, useState, useMemo } from "react";
 import { auth } from "../auth";
+import Markdown from "../components/Markdown";
 
 export default function PatientHome() {
   const token = auth.token();
@@ -214,7 +215,6 @@ export default function PatientHome() {
         const ai = await jsonOrThrow(aiRes, "AI reply failed");
         setMessages((prev) => [...prev, ai]);
       } catch (e) {
-        // If AI fails, still keep user's message; optionally surface a toast
         console.error(e);
       }
 
@@ -390,7 +390,7 @@ export default function PatientHome() {
       >
         {messages.map((m) => (
           <div key={m.id} style={{ margin: "6px 0" }}>
-            <strong>{m.sender}:</strong> {m.content}
+            <strong>{m.sender}:</strong> <Markdown text={m.content} />
             <small style={{ opacity: 0.6, marginLeft: 8 }}>
               {fmt(m.created_at)}
             </small>
