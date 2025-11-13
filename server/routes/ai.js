@@ -6,7 +6,7 @@ const { requireAuth, requireRole } = require("../middleware/authz");
 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-//  Model + prompt config (backend-only) ---
+// --- Model + prompt config (backend-only) ---
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
 const MODEL_NAME = process.env.GEMINI_MODEL || "gemini-2.0-flash-lite";
 const ENV_SYSTEM_PROMPT = (process.env.GEMINI_SYSTEM_PROMPT || "").trim();
@@ -20,6 +20,62 @@ async function getOwnedSession(patientUserId, sessionId) {
     [sessionId, patientUserId]
   );
   return rows[0] || null;
+}
+
+/**
+ * Very light safety pass:
+ * - Strips any lines that look like *recommendations* for imaging/meds.
+ * - We only remove declarative advice (not questions).
+ * - This keeps intake chat strictly history-gathering.
+ */
+function stripAdvice(markdown = "") {
+  const lines = String(markdown).split("\n");
+  const cleaned = [];
+
+  for (let raw of lines) {
+    const line = raw.trim();
+    const lower = line.toLowerCase();
+
+    // keep blank spacing
+    if (!line) {
+      cleaned.push(raw);
+      continue;
+    }
+
+    // quick exits for headings/bullets that are clearly summary-only phrases
+    const bannedHeadings = [
+      "**possible tests",
+      "**imaging to discuss",
+      "**medication considerations",
+      "imaging:",
+      "imaging to discuss:",
+    ];
+    if (bannedHeadings.some((h) => lower.startsWith(h))) continue;
+
+    // we consider it "advice" if it's *not a question* and includes a recommender verb
+    const hasRecommender =
+      /(recommend|suggest|should|consider|start|begin|take|use|get|need|prescrib|dose)\b/i.test(
+        line
+      ) && !line.endsWith("?");
+
+    // only strip if that advice concerns imaging/medication classes explicitly
+    const targets =
+      /(x-?ray|ct\b|mri\b|ultrasound|scan|imaging|antibiotic|antivir|steroid|ibuprofen|naproxen|acetaminophen|paracetamol|amoxicillin|dose|mg\b)/i.test(
+        line
+      );
+
+    if (hasRecommender && targets) {
+      // drop this line
+      continue;
+    }
+
+    cleaned.push(raw);
+  }
+
+  const out = cleaned.join("\n").trim();
+  return out.length
+    ? out
+    : "Thanks for the information. I’ll pass this to the doctor.";
 }
 
 // POST /api/ai/patient/chat/:sessionId/reply
@@ -60,7 +116,7 @@ router.post(
           parts: [{ text: m.content }],
         }));
 
-      // Build model with backend-only system instruction 
+      // Build model with backend-only system instruction
       const systemInstruction =
         ENV_SYSTEM_PROMPT.length > 0 ? ENV_SYSTEM_PROMPT : undefined;
 
@@ -88,10 +144,13 @@ router.post(
       const result = await chat.sendMessage(userText);
 
       // Robust text extraction across SDK versions
-      const reply =
+      const rawReply =
         result?.response?.text?.() ||
         result?.response?.candidates?.[0]?.content?.parts?.[0]?.text ||
         "(no response)";
+
+      // Enforce "intake-only" in the patient chat
+      const reply = stripAdvice(rawReply);
 
       // Save AI reply
       const { rows: saved } = await pool.query(
