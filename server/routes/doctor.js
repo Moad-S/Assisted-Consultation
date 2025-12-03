@@ -41,6 +41,74 @@ router.get(
   }
 );
 
+/**
+ * NEW: Get a patient's consolidated profile for the doctor.
+ * - Always returns demographics from users/patients.
+ * - If AI profile exists (care_ai.patient_profiles), returns it under "profile".
+ * - If table is missing or no row yet, returns profile: {} (safe).
+ */
+router.get(
+  "/patients/:patientId/profile",
+  requireAuth,
+  requireRole("doctor"),
+  async (req, res) => {
+    const pid = Number(req.params.patientId);
+
+    // Demographics / intake base
+    const demo = await pool.query(
+      `
+      SELECT u.id AS user_id,
+             COALESCE(p.full_name, u.display_name, u.email) AS name,
+             u.email,
+             p.full_name,
+             p.date_of_birth,
+             p.sex,
+             u.created_at
+        FROM care_ai.users u
+        JOIN care_ai.patients p ON p.user_id = u.id
+       WHERE u.id = $1
+    `,
+      [pid]
+    );
+    if (!demo.rows.length) {
+      return res.status(404).json({ error: "patient not found" });
+    }
+
+    // Optional AI-extracted profile
+    let profileRow = null;
+    try {
+      const pr = await pool.query(
+        `
+        SELECT data, updated_at, source_session_id
+          FROM care_ai.patient_profiles
+         WHERE patient_id = $1
+         LIMIT 1
+      `,
+        [pid]
+      );
+      profileRow = pr.rows[0] || null;
+    } catch (err) {
+      // If the table doesn't exist yet, fail soft (return empty profile).
+      // Postgres undefined_table error code: 42P01
+      if (err?.code !== "42P01") {
+        console.error("[doctor profile] unexpected error:", err.message || err);
+      }
+      profileRow = null;
+    }
+
+    res.json({
+      ...demo.rows[0],
+      profile: profileRow
+        ? {
+            data: profileRow.data || {},
+            updated_at: profileRow.updated_at,
+            source_session_id: profileRow.source_session_id,
+          }
+        : {}, // safe default
+    });
+  }
+);
+
 /** Read messages in a session */
 router.get(
   "/sessions/:sessionId/messages",
@@ -61,7 +129,7 @@ router.get(
   }
 );
 
-/** ⬇️ NEW: Get saved AI summary for a session */
+/** Get saved AI summary for a session */
 router.get(
   "/sessions/:sessionId/summary",
   requireAuth,

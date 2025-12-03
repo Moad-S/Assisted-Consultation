@@ -3,14 +3,131 @@ const router = require("express").Router();
 const { pool } = require("../db");
 const { requireAuth, requireRole } = require("../middleware/authz");
 
-// ⬇️ NEW: background summarizer (created earlier in server/ai/summarizer.js)
+// ------------------------- Background summarizer (already in your app) -------------------------
 let summarizeSession = null;
 try {
   ({ summarizeSession } = require("../ai/summarizer"));
 } catch {
-  // If the file isn't present yet, we just skip (no crash).
-  summarizeSession = null;
+  summarizeSession = null; // not fatal
 }
+
+// ------------------------- Optional AI profile extractor (safe if missing) ----------------------
+let genAI = null;
+let MODEL_NAME = process.env.GEMINI_MODEL || "gemini-2.0-flash-lite";
+try {
+  if (process.env.GOOGLE_API_KEY) {
+    const { GoogleGenerativeAI } = require("@google/generative-ai");
+    genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+  }
+} catch {
+  genAI = null;
+}
+
+const PROFILE_JSON_PROMPT = String.raw`
+You are an intake information extractor. From the following patient/AI chat transcript,
+return a single JSON object matching this EXACT schema (no extra keys, no comments):
+
+{
+  "chronic_conditions": [ "string" ],
+  "allergies": [ "string" ],
+  "current_medications": [ "string" ],
+  "past_medical_history": [ "string" ],
+  "past_surgical_history": [ "string" ],
+  "family_history": [ "string" ],
+  "social_history": {
+    "smoking": "yes|no|former|unknown",
+    "alcohol": "yes|no|unknown",
+    "drugs": "yes|no|unknown"
+  },
+  "pregnancy_status": "pregnant|not_pregnant|unknown"
+}
+
+Rules:
+- Use only information explicitly present in the transcript.
+- If a field is not mentioned, use [] for arrays or "unknown" for categorical fields.
+- Do NOT diagnose or infer anything. No free-text outside the JSON.
+`;
+
+function tryJsonParse(s) {
+  if (!s) return null;
+  const cleaned = String(s)
+    .trim()
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/```$/i, "")
+    .trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    return null;
+  }
+}
+
+async function upsertProfileFromSession(sessionId) {
+  // Soft-fail if AI is not configured
+  if (!genAI) return;
+
+  try {
+    // Transcript
+    const { rows: msgs } = await pool.query(
+      `
+      SELECT sender, content
+        FROM care_ai.chat_messages
+       WHERE session_id = $1
+       ORDER BY created_at ASC
+    `,
+      [sessionId]
+    );
+
+    if (!msgs.length) return;
+
+    const transcript = msgs
+      .map((m) => `${m.sender}: ${m.content}`)
+      .join("\n")
+      .slice(-10000); // bound prompt size
+
+    // Session owner (patient_id)
+    const { rows: srows } = await pool.query(
+      `SELECT patient_id FROM care_ai.chat_sessions WHERE id = $1`,
+      [sessionId]
+    );
+    if (!srows.length) return;
+    const patientId = srows[0].patient_id;
+
+    // Ask Gemini
+    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+    const resp = await model.generateContent([
+      { text: PROFILE_JSON_PROMPT },
+      { text: `TRANSCRIPT:\n${transcript}` },
+    ]);
+
+    const text =
+      resp?.response?.text?.() ||
+      resp?.response?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      null;
+
+    const extracted = tryJsonParse(text);
+    if (!extracted) return;
+
+    // Merge (upsert). If table doesn't exist, catch & log without crashing.
+    await pool.query(
+      `
+      INSERT INTO care_ai.patient_profiles (patient_id, data, source_session_id)
+      VALUES ($1, $2::jsonb, $3)
+      ON CONFLICT (patient_id)
+      DO UPDATE SET
+        data = care_ai.patient_profiles.data || EXCLUDED.data,
+        source_session_id = EXCLUDED.source_session_id,
+        updated_at = NOW()
+    `,
+      [patientId, JSON.stringify(extracted), sessionId]
+    );
+  } catch (err) {
+    console.error("[profile-extract] non-fatal error:", err.message || err);
+  }
+}
+
+// -------------------------------- Existing endpoints (unchanged behavior) ----------------------
 
 /** Get current patient's profile (intake fields) */
 router.get("/me", requireAuth, requireRole("patient"), async (req, res) => {
@@ -60,7 +177,7 @@ router.post(
  * Helper: end any active session(s) for this patient.
  * If sessionId is provided, scope to that row.
  * Returns the list of ended session IDs.
- * Also triggers background summarization for each ended session.
+ * Also triggers background summarization & profile extraction for each ended session.
  */
 async function endActiveSessionForPatient(patientId, sessionId = null) {
   const params = [patientId];
@@ -80,12 +197,19 @@ async function endActiveSessionForPatient(patientId, sessionId = null) {
   const { rows } = await pool.query(q, params);
   const endedIds = rows.map((r) => r.id);
 
-  // Fire-and-forget summarization so the request isn't blocked
-  if (summarizeSession && endedIds.length) {
+  // Fire-and-forget: summarization + profile extraction
+  if (endedIds.length) {
     for (const sid of endedIds) {
+      if (summarizeSession) {
+        setImmediate(() =>
+          summarizeSession(sid).catch((e) =>
+            console.error("[summarize] failed for sid", sid, e)
+          )
+        );
+      }
       setImmediate(() =>
-        summarizeSession(sid).catch((e) =>
-          console.error("[summarize] failed for sid", sid, e)
+        upsertProfileFromSession(sid).catch((e) =>
+          console.error("[profile-extract] failed for sid", sid, e)
         )
       );
     }
@@ -102,7 +226,7 @@ router.post(
   async (req, res) => {
     const userId = req.user.sub;
 
-    // End any current active sessions (and summarize them in background)
+    // End any current active sessions (and summarize/extract in background)
     await endActiveSessionForPatient(userId, null);
 
     // Create a new active session
@@ -178,7 +302,6 @@ router.get(
 
 /**
  * Resume an older session (make it active again).
- * (You already had this behavior — we keep it intact.)
  */
 router.post(
   "/chat/:sessionId/resume",

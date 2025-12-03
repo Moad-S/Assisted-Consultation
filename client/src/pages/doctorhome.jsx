@@ -1,5 +1,5 @@
 // client/src/pages/doctorhome.jsx
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { auth } from "../auth";
 import Markdown from "../components/Markdown";
 
@@ -20,6 +20,10 @@ export default function DoctorHome() {
   const [summary, setSummary] = useState(null); // { summary_md, summary_at, ... }
   const [summaryBusy, setSummaryBusy] = useState(false);
 
+  // NEW: patient profile (demographics + AI-extracted)
+  const [profile, setProfile] = useState(null);
+  const [profileBusy, setProfileBusy] = useState(false);
+
   // Load patients once
   useEffect(() => {
     (async () => {
@@ -30,20 +34,83 @@ export default function DoctorHome() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
+  function fmtDate(dt) {
+    try {
+      return new Date(dt).toLocaleString();
+    } catch {
+      return dt ?? "";
+    }
+  }
+
+  // Helper to render unknown/optional AI profile structure safely
+  function ProfileRow({ label, value }) {
+    if (
+      value === null ||
+      value === undefined ||
+      (typeof value === "string" && value.trim() === "") ||
+      (Array.isArray(value) && value.length === 0)
+    ) {
+      return null;
+    }
+    return (
+      <div style={{ marginBottom: 6 }}>
+        <div style={{ fontWeight: 600, opacity: 0.9 }}>{label}</div>
+        {Array.isArray(value) ? (
+          <ul style={{ margin: "4px 0 0 18px" }}>
+            {value.map((v, i) => (
+              <li key={i} style={{ lineHeight: 1.4 }}>
+                {typeof v === "string" ? v : JSON.stringify(v)}
+              </li>
+            ))}
+          </ul>
+        ) : typeof value === "string" ? (
+          <div style={{ marginTop: 2 }}>
+            {/* if string could contain bullets/formatting, render as Markdown */}
+            <Markdown text={value} />
+          </div>
+        ) : (
+          <pre
+            style={{
+              margin: 0,
+              marginTop: 2,
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              fontFamily:
+                "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+              fontSize: 12,
+              opacity: 0.95,
+            }}
+          >
+            {JSON.stringify(value, null, 2)}
+          </pre>
+        )}
+      </div>
+    );
+  }
+
   async function openPatient(p) {
     setSelectedPatient(p);
     setSelectedSessionId(null);
     setMessages([]);
     setSummary(null);
+    setProfile(null);
 
     setSessionsBusy(true);
+    setProfileBusy(true);
     try {
-      const data = await fetch(`/api/doctor/patients/${p.user_id}/sessions`, {
-        headers: authHeader,
-      }).then((r) => r.json());
-      setSessions(data || []);
+      const [sessionsResp, profileResp] = await Promise.all([
+        fetch(`/api/doctor/patients/${p.user_id}/sessions`, {
+          headers: authHeader,
+        }).then((r) => r.json()),
+        fetch(`/api/doctor/patients/${p.user_id}/profile`, {
+          headers: authHeader,
+        }).then((r) => r.json()),
+      ]);
+      setSessions(sessionsResp || []);
+      setProfile(profileResp || null);
     } finally {
       setSessionsBusy(false);
+      setProfileBusy(false);
     }
   }
 
@@ -95,9 +162,7 @@ export default function DoctorHome() {
       >
         <div>
           <strong>#{s.id}</strong>{" "}
-          <small style={{ opacity: 0.7 }}>
-            {new Date(s.created_at).toLocaleString()}
-          </small>
+          <small style={{ opacity: 0.7 }}>{fmtDate(s.created_at)}</small>
         </div>
         <div
           style={{
@@ -119,9 +184,7 @@ export default function DoctorHome() {
             {s.status}
           </span>
           {s.ended_at && (
-            <small style={{ opacity: 0.6 }}>
-              ended {new Date(s.ended_at).toLocaleString()}
-            </small>
+            <small style={{ opacity: 0.6 }}>ended {fmtDate(s.ended_at)}</small>
           )}
           {hasSummary && (
             <span
@@ -143,13 +206,19 @@ export default function DoctorHome() {
     );
   }
 
+  // Useful derived flag for profile AI section
+  const aiProfile = useMemo(() => {
+    const d = profile?.profile?.data;
+    return d && typeof d === "object" ? d : null;
+  }, [profile]);
+
   return (
     <main
       style={{
         fontFamily: "system-ui",
         padding: 24,
         display: "grid",
-        gridTemplateColumns: "260px 300px 1fr 1fr",
+        gridTemplateColumns: "260px 300px 1fr 1fr 320px", // + Profile column
         gap: 16,
       }}
     >
@@ -220,9 +289,12 @@ export default function DoctorHome() {
           ) : messages.length > 0 ? (
             messages.map((m) => (
               <div key={m.id} style={{ margin: "6px 0" }}>
-                <strong>{m.sender}:</strong> <Markdown text={m.content} />
+                <strong>{m.sender}:</strong>{" "}
+                <span style={{ display: "inline-block", verticalAlign: "top" }}>
+                  <Markdown text={m.content} />
+                </span>
                 <small style={{ opacity: 0.6, marginLeft: 8 }}>
-                  {new Date(m.created_at).toLocaleString()}
+                  {fmtDate(m.created_at)}
                 </small>
               </div>
             ))
@@ -254,7 +326,7 @@ export default function DoctorHome() {
             <>
               <div style={{ marginBottom: 8 }}>
                 <small style={{ opacity: 0.7 }}>
-                  Generated: {new Date(summary.summary_at).toLocaleString()}
+                  Generated: {fmtDate(summary.summary_at)}
                 </small>
               </div>
               <Markdown text={summary.summary_md} />
@@ -263,6 +335,126 @@ export default function DoctorHome() {
             <p>No summary available for this session yet.</p>
           ) : (
             <p>Open a session to view its summary.</p>
+          )}
+        </div>
+      </section>
+
+      {/* NEW: Profile */}
+      <section>
+        <h2>Profile</h2>
+        <div
+          style={{
+            border: "1px solid #444",
+            borderRadius: 8,
+            padding: 12,
+            minHeight: 320,
+            background: "#0c0c0c",
+          }}
+        >
+          {profileBusy ? (
+            <p>Loading profile…</p>
+          ) : !selectedPatient ? (
+            <p>Select a patient to view profile.</p>
+          ) : profile ? (
+            <>
+              {/* Demographics / base intake */}
+              <div
+                style={{
+                  padding: 8,
+                  borderRadius: 8,
+                  border: "1px solid #333",
+                  background: "#0e0e0e",
+                  marginBottom: 10,
+                }}
+              >
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                  Demographics
+                </div>
+                <div style={{ marginBottom: 4 }}>
+                  <strong>Name:</strong>{" "}
+                  {profile.full_name || profile.name || "—"}
+                </div>
+                <div style={{ marginBottom: 4 }}>
+                  <strong>Email:</strong> {profile.email}
+                </div>
+                <div style={{ marginBottom: 4 }}>
+                  <strong>Sex:</strong>{" "}
+                  {profile.sex ? String(profile.sex) : "—"}
+                </div>
+                <div style={{ marginBottom: 4 }}>
+                  <strong>Date of birth:</strong>{" "}
+                  {profile.date_of_birth ? fmtDate(profile.date_of_birth) : "—"}
+                </div>
+                <div style={{ marginBottom: 4 }}>
+                  <strong>Registered:</strong> {fmtDate(profile.created_at)}
+                </div>
+              </div>
+
+              {/* AI-extracted profile (if present) */}
+              <div
+                style={{
+                  padding: 8,
+                  borderRadius: 8,
+                  border: "1px solid #333",
+                  background: "#0e0e0e",
+                }}
+              >
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                  AI-extracted profile
+                </div>
+                {aiProfile ? (
+                  <>
+                    <ProfileRow label="Age" value={aiProfile.age} />
+                    <ProfileRow label="Sex (from chat)" value={aiProfile.sex} />
+                    <ProfileRow
+                      label="Chronic conditions"
+                      value={aiProfile.chronic_conditions}
+                    />
+                    <ProfileRow
+                      label="Past surgical history"
+                      value={aiProfile.past_surgical_history}
+                    />
+                    <ProfileRow
+                      label="Medications"
+                      value={aiProfile.medications}
+                    />
+                    <ProfileRow label="Allergies" value={aiProfile.allergies} />
+                    <ProfileRow
+                      label="Social history"
+                      value={aiProfile.social_history}
+                    />
+                    <ProfileRow
+                      label="Family history"
+                      value={aiProfile.family_history}
+                    />
+                    <ProfileRow
+                      label="Substance use"
+                      value={aiProfile.substance_use}
+                    />
+                    <ProfileRow
+                      label="Other notes"
+                      value={aiProfile.other_notes}
+                    />
+                    {profile?.profile?.updated_at && (
+                      <div style={{ marginTop: 6 }}>
+                        <small style={{ opacity: 0.7 }}>
+                          Last updated: {fmtDate(profile.profile.updated_at)}
+                          {profile?.profile?.source_session_id
+                            ? ` • from session #${profile.profile.source_session_id}`
+                            : ""}
+                        </small>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p style={{ opacity: 0.8 }}>
+                    No AI-extracted profile on file yet.
+                  </p>
+                )}
+              </div>
+            </>
+          ) : (
+            <p>Profile unavailable.</p>
           )}
         </div>
       </section>
