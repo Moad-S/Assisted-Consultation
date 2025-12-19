@@ -20,9 +20,14 @@ export default function DoctorHome() {
   const [summary, setSummary] = useState(null); // { summary_md, summary_at, ... }
   const [summaryBusy, setSummaryBusy] = useState(false);
 
-  // NEW: patient profile (demographics + AI-extracted)
+  // patient profile (demographics + AI-extracted)
   const [profile, setProfile] = useState(null);
   const [profileBusy, setProfileBusy] = useState(false);
+
+  // NEW: doctor note state
+  const [note, setNote] = useState("");
+  const [noteBusy, setNoteBusy] = useState(false);
+  const [noteMeta, setNoteMeta] = useState(null); // { updated_at, extracted_medications? }
 
   // Load patients once
   useEffect(() => {
@@ -65,7 +70,6 @@ export default function DoctorHome() {
           </ul>
         ) : typeof value === "string" ? (
           <div style={{ marginTop: 2 }}>
-            {/* if string could contain bullets/formatting, render as Markdown */}
             <Markdown text={value} />
           </div>
         ) : (
@@ -88,12 +92,29 @@ export default function DoctorHome() {
     );
   }
 
+  async function refreshProfile(pid) {
+    if (!pid) return;
+    setProfileBusy(true);
+    try {
+      const data = await fetch(`/api/doctor/patients/${pid}/profile`, {
+        headers: authHeader,
+      }).then((r) => r.json());
+      setProfile(data || null);
+    } finally {
+      setProfileBusy(false);
+    }
+  }
+
   async function openPatient(p) {
     setSelectedPatient(p);
     setSelectedSessionId(null);
     setMessages([]);
     setSummary(null);
     setProfile(null);
+
+    // reset note UI when switching patients
+    setNote("");
+    setNoteMeta(null);
 
     setSessionsBusy(true);
     setProfileBusy(true);
@@ -114,10 +135,68 @@ export default function DoctorHome() {
     }
   }
 
+  async function loadNote(sessionId) {
+    setNote("");
+    setNoteMeta(null);
+    try {
+      const n = await fetch(`/api/doctor/sessions/${sessionId}/note`, {
+        headers: authHeader,
+      }).then(async (r) => {
+        if (!r.ok) return null;
+        return r.json();
+      });
+
+      if (n && n.note_md) {
+        setNote(n.note_md);
+        setNoteMeta({ updated_at: n.updated_at });
+      } else {
+        setNote("");
+        setNoteMeta(null);
+      }
+    } catch {
+      setNote("");
+      setNoteMeta(null);
+    }
+  }
+
+  async function saveNote() {
+    if (!selectedSessionId) return;
+    if (!note.trim()) return;
+
+    setNoteBusy(true);
+    try {
+      const res = await fetch(
+        `/api/doctor/sessions/${selectedSessionId}/note`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeader },
+          body: JSON.stringify({ note_md: note }),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed to save note");
+
+      setNoteMeta({
+        updated_at: data.updated_at,
+        extracted_medications: data.extracted_medications || null,
+      });
+
+      // refresh profile so meds/notes show up immediately
+      await refreshProfile(selectedPatient?.user_id);
+    } catch (e) {
+      alert(e.message || "Save failed");
+    } finally {
+      setNoteBusy(false);
+    }
+  }
+
   async function openSession(id) {
     setSelectedSessionId(id);
     setMessages([]);
     setSummary(null);
+
+    // NEW: load note for this session
+    loadNote(id);
 
     // Messages
     setMessagesBusy(true);
@@ -218,7 +297,7 @@ export default function DoctorHome() {
         fontFamily: "system-ui",
         padding: 24,
         display: "grid",
-        gridTemplateColumns: "260px 300px 1fr 1fr 320px", // + Profile column
+        gridTemplateColumns: "260px 300px 1fr 1fr 320px",
         gap: 16,
       }}
     >
@@ -308,7 +387,7 @@ export default function DoctorHome() {
         </div>
       </section>
 
-      {/* Summary */}
+      {/* Summary + Doctor Notes */}
       <section>
         <h2>Summary</h2>
         <div
@@ -336,10 +415,77 @@ export default function DoctorHome() {
           ) : (
             <p>Open a session to view its summary.</p>
           )}
+
+          {/* NEW: Doctor Notes */}
+          <div
+            style={{
+              marginTop: 14,
+              paddingTop: 12,
+              borderTop: "1px solid #222",
+            }}
+          >
+            <h3 style={{ margin: "0 0 8px" }}>
+              Doctor Notes (saved to profile)
+            </h3>
+
+            {!selectedSessionId ? (
+              <p style={{ opacity: 0.75 }}>Open a session to write notes.</p>
+            ) : (
+              <>
+                {noteMeta?.updated_at && (
+                  <div style={{ marginBottom: 8 }}>
+                    <small style={{ opacity: 0.7 }}>
+                      Last saved: {fmtDate(noteMeta.updated_at)}
+                    </small>
+                  </div>
+                )}
+
+                <textarea
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="Write session notes (include prescriptions here if needed, with duration)."
+                  style={{
+                    width: "100%",
+                    minHeight: 140,
+                    padding: 10,
+                    borderRadius: 8,
+                    border: "1px solid #333",
+                    background: "#0b0b0b",
+                    color: "inherit",
+                    resize: "vertical",
+                  }}
+                  disabled={noteBusy}
+                />
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    marginTop: 8,
+                    alignItems: "center",
+                  }}
+                >
+                  <button
+                    onClick={saveNote}
+                    disabled={noteBusy || !note.trim()}
+                  >
+                    {noteBusy ? "Saving..." : "Save note"}
+                  </button>
+
+                  {noteMeta?.extracted_medications?.length ? (
+                    <small style={{ opacity: 0.75 }}>
+                      Detected meds saved:{" "}
+                      {noteMeta.extracted_medications.join("; ")}
+                    </small>
+                  ) : null}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </section>
 
-      {/* NEW: Profile */}
+      {/* Profile */}
       <section>
         <h2>Profile</h2>
         <div
@@ -357,7 +503,6 @@ export default function DoctorHome() {
             <p>Select a patient to view profile.</p>
           ) : profile ? (
             <>
-              {/* Demographics / base intake */}
               <div
                 style={{
                   padding: 8,
@@ -390,7 +535,6 @@ export default function DoctorHome() {
                 </div>
               </div>
 
-              {/* AI-extracted profile (if present) */}
               <div
                 style={{
                   padding: 8,

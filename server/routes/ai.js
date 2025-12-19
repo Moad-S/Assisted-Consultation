@@ -6,7 +6,7 @@ const { requireAuth, requireRole } = require("../middleware/authz");
 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-// --- Model + prompt config (backend-only) ---
+// --- Model + prompt config (backend-only) -----------------------------------
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
 const MODEL_NAME = process.env.GEMINI_MODEL || "gemini-2.0-flash-lite";
 const ENV_SYSTEM_PROMPT = (process.env.GEMINI_SYSTEM_PROMPT || "").trim();
@@ -22,12 +22,111 @@ async function getOwnedSession(patientUserId, sessionId) {
   return rows[0] || null;
 }
 
+/** ----------------- Patient context helpers (to avoid redundant Qs) ----------------- */
+function computeAge(dob) {
+  if (!dob) return null;
+  const d = new Date(dob);
+  if (isNaN(d.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - d.getFullYear();
+  const m = now.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
+  return age;
+}
+function normSex(s) {
+  if (!s) return "unknown";
+  const t = String(s).trim().toLowerCase();
+  if (["m", "male", "man"].includes(t)) return "male";
+  if (["f", "female", "woman"].includes(t)) return "female";
+  return t || "unknown";
+}
+
 /**
- * Very light safety pass:
- * - Strips any lines that look like *recommendations* for imaging/meds.
- * - We only remove declarative advice (not questions).
- * - This keeps intake chat strictly history-gathering.
+ * Fetch demographics + optional AI-extracted profile.
+ * Reads care_ai.users + care_ai.patients and (optionally) care_ai.patient_profiles.
  */
+async function fetchPatientContext(userId) {
+  const baseQ = `
+    SELECT u.email, u.display_name, p.full_name, p.date_of_birth, p.sex, u.created_at
+      FROM care_ai.users u
+      JOIN care_ai.patients p ON p.user_id = u.id
+     WHERE u.id = $1
+  `;
+  const profQ = `
+    SELECT data, updated_at, source_session_id
+      FROM care_ai.patient_profiles
+     WHERE patient_id = $1
+     LIMIT 1
+  `;
+
+  const [{ rows: baseRows }] = await Promise.all([pool.query(baseQ, [userId])]);
+  const base = baseRows[0] || {};
+
+  let profile = null;
+  try {
+    const { rows } = await pool.query(profQ, [userId]);
+    profile = rows[0] || null;
+  } catch {
+    profile = null; // table may not exist yet
+  }
+
+  const name = base.full_name || base.display_name || base.email || "";
+  const sex = normSex(base.sex);
+  const age = computeAge(base.date_of_birth);
+
+  const ai = (profile && profile.data) || {};
+  const ctx = {
+    name,
+    sex,
+    age,
+    dob: base.date_of_birth || null,
+    email: base.email || null,
+    ai_profile: {
+      chronic_conditions: ai.chronic_conditions || null,
+      past_surgical_history: ai.past_surgical_history || null,
+      medications: ai.medications || null,
+      allergies: ai.allergies || null,
+      social_history: ai.social_history || null,
+      family_history: ai.family_history || null,
+      substance_use: ai.substance_use || null,
+      other_notes: ai.other_notes || null,
+      source_session_id: profile?.source_session_id || null,
+      updated_at: profile?.updated_at || null,
+    },
+  };
+
+  // Concise context block
+  const lines = [];
+  lines.push(`Patient: ${name || "—"}`);
+  if (sex && sex !== "unknown") lines.push(`Sex: ${sex}`);
+  if (age != null) lines.push(`Age: ${age}`);
+  if (ctx.dob)
+    lines.push(`DOB: ${new Date(ctx.dob).toISOString().slice(0, 10)}`);
+  const pushList = (label, v) => {
+    if (!v) return;
+    if (Array.isArray(v)) {
+      if (v.length) lines.push(`${label}: ${v.join(", ")}`);
+    } else if (typeof v === "string" && v.trim()) {
+      lines.push(`${label}: ${v}`);
+    }
+  };
+  pushList("Chronic conditions", ctx.ai_profile.chronic_conditions);
+  pushList("Past surgical history", ctx.ai_profile.past_surgical_history);
+  pushList("Medications", ctx.ai_profile.medications);
+  pushList("Allergies", ctx.ai_profile.allergies);
+  pushList("Social history", ctx.ai_profile.social_history);
+  pushList("Family history", ctx.ai_profile.family_history);
+  pushList("Substance use", ctx.ai_profile.substance_use);
+  pushList("Other notes", ctx.ai_profile.other_notes);
+
+  const textBlock =
+    `PATIENT CONTEXT (from profile/EHR)\n` +
+    lines.map((l) => `• ${l}`).join("\n");
+
+  return { ctx, textBlock };
+}
+
+/** ----------------- Intake-only scrub (keep your existing behavior) ----------------- */
 function stripAdvice(markdown = "") {
   const lines = String(markdown).split("\n");
   const cleaned = [];
@@ -36,13 +135,11 @@ function stripAdvice(markdown = "") {
     const line = raw.trim();
     const lower = line.toLowerCase();
 
-    // keep blank spacing
     if (!line) {
       cleaned.push(raw);
       continue;
     }
 
-    // quick exits for headings/bullets that are clearly summary-only phrases
     const bannedHeadings = [
       "**possible tests",
       "**imaging to discuss",
@@ -52,22 +149,17 @@ function stripAdvice(markdown = "") {
     ];
     if (bannedHeadings.some((h) => lower.startsWith(h))) continue;
 
-    // we consider it "advice" if it's *not a question* and includes a recommender verb
     const hasRecommender =
       /(recommend|suggest|should|consider|start|begin|take|use|get|need|prescrib|dose)\b/i.test(
         line
       ) && !line.endsWith("?");
 
-    // only strip if that advice concerns imaging/medication classes explicitly
     const targets =
       /(x-?ray|ct\b|mri\b|ultrasound|scan|imaging|antibiotic|antivir|steroid|ibuprofen|naproxen|acetaminophen|paracetamol|amoxicillin|dose|mg\b)/i.test(
         line
       );
 
-    if (hasRecommender && targets) {
-      // drop this line
-      continue;
-    }
+    if (hasRecommender && targets) continue;
 
     cleaned.push(raw);
   }
@@ -78,8 +170,14 @@ function stripAdvice(markdown = "") {
     : "Thanks for the information. I’ll pass this to the doctor.";
 }
 
-// POST /api/ai/patient/chat/:sessionId/reply
-// Body: { userText: string }  <-- no systemPrompt here; backend-only
+// ----------------- Routes ----------------------------------------------------
+
+/**
+ * POST /api/ai/patient/chat/:sessionId/reply
+ * Body: { userText?: string, kickoff?: boolean }
+ * If kickoff=true, the AI will initiate the conversation with a brief greeting
+ * and a single chief-concern question (no advice).
+ */
 router.post(
   "/patient/chat/:sessionId/reply",
   requireAuth,
@@ -87,9 +185,13 @@ router.post(
   async (req, res) => {
     try {
       const sessionId = Number(req.params.sessionId);
-      const { userText } = req.body || {};
-      if (!sessionId || !userText || !userText.trim()) {
-        return res.status(400).json({ error: "Missing sessionId or userText" });
+      const { userText, kickoff } = req.body || {};
+
+      if (!sessionId) {
+        return res.status(400).json({ error: "Missing sessionId" });
+      }
+      if (!kickoff && (!userText || !String(userText).trim())) {
+        return res.status(400).json({ error: "Missing userText" });
       }
 
       // Ownership + active check
@@ -116,32 +218,88 @@ router.post(
           parts: [{ text: m.content }],
         }));
 
-      // Build model with backend-only system instruction
-      const systemInstruction =
-        ENV_SYSTEM_PROMPT.length > 0 ? ENV_SYSTEM_PROMPT : undefined;
+      // Fetch per-patient context and build dynamic system instruction
+      const { ctx, textBlock } = await fetchPatientContext(req.user.sub);
 
-      const model = genAI.getGenerativeModel(
-        systemInstruction
-          ? { model: MODEL_NAME, systemInstruction }
-          : { model: MODEL_NAME }
+      // Demographic-driven guardrails to avoid redundant/inappropriate questions
+      const demographicRules = [];
+      if (ctx.sex && ctx.sex !== "unknown") {
+        demographicRules.push(
+          "Do NOT ask for the patient's sex/gender; it's already known."
+        );
+      }
+      if (ctx.age != null || ctx.dob) {
+        demographicRules.push(
+          "Do NOT ask for age or date of birth; acknowledge implicitly if needed."
+        );
+      }
+      // Pregnancy logic
+      if (ctx.sex === "male") {
+        demographicRules.push(
+          "Do NOT ask about pregnancy, last menstrual period, or OB/GYN-specific questions."
+        );
+      } else if (ctx.sex === "female") {
+        if (ctx.age != null && (ctx.age < 12 || ctx.age > 55)) {
+          demographicRules.push(
+            "Do NOT ask about pregnancy/LMP (age range not applicable)."
+          );
+        } else {
+          demographicRules.push(
+            "Pregnancy/LMP may be asked ONLY if clearly relevant to the chief complaint; otherwise avoid."
+          );
+        }
+      } else {
+        // unknown/nonbinary case
+        demographicRules.push(
+          "Ask about pregnancy/LMP only if clearly relevant; otherwise avoid."
+        );
+      }
+
+      // Medication/allergy duplication reduction
+      demographicRules.push(
+        "If medications/allergies or chronic conditions are already listed in context, do not re-ask for long lists; instead briefly confirm changes only if relevant (e.g., 'Any changes to your medications since last time?')."
       );
 
-      // Fallback for older SDKs: inject a pseudo system message up front
-      const historyForChat =
-        systemInstruction && systemInstruction.length > 0
-          ? [
-              {
-                role: "user",
-                parts: [{ text: `SYSTEM PROMPT:\n${systemInstruction}` }],
-              },
-              ...history,
-            ]
-          : history;
+      const dynamicSystem = [
+        ENV_SYSTEM_PROMPT || "",
+        "",
+        textBlock,
+        "",
+        "INTERACTION RULES:",
+        "- Use the patient context above to avoid repeating known facts.",
+        "- Ask only for missing or unclear information related to the chief concern.",
+        "- Do NOT prescribe medications or order imaging; limit to symptom clarification and triage.",
+        "- Keep questions concise and one at a time.",
+        ...demographicRules.map((r) => `- ${r}`),
+        kickoff
+          ? "\nKICKOFF BEHAVIOR: Greet the patient briefly (use their name if provided) and ask only ONE short question to elicit the chief concern. Do not give advice."
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      const model = genAI.getGenerativeModel({
+        model: MODEL_NAME,
+        systemInstruction: dynamicSystem,
+      });
+
+      // Fallback injection for older SDKs
+      const historyForChat = [
+        {
+          role: "user",
+          parts: [{ text: `SYSTEM CONTEXT:\n${dynamicSystem}` }],
+        },
+        ...history,
+      ];
 
       const chat = model.startChat({ history: historyForChat });
 
-      // Send latest user message
-      const result = await chat.sendMessage(userText);
+      // Compose the user turn
+      const finalUserText = kickoff
+        ? "Begin the intake now. (One short chief-concern question only.)"
+        : String(userText);
+
+      const result = await chat.sendMessage(finalUserText);
 
       // Robust text extraction across SDK versions
       const rawReply =
@@ -149,7 +307,7 @@ router.post(
         result?.response?.candidates?.[0]?.content?.parts?.[0]?.text ||
         "(no response)";
 
-      // Enforce "intake-only" in the patient chat
+      // Enforce intake-only tone
       const reply = stripAdvice(rawReply);
 
       // Save AI reply

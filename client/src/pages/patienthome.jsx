@@ -139,6 +139,19 @@ export default function PatientHome() {
       });
       const s = await jsonOrThrow(res, "Could not start session");
       applySession(s.id);
+
+      // NEW: ask the AI to kick off the conversation immediately
+      try {
+        const aiRes = await fetch(`/api/ai/patient/chat/${s.id}/reply`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeader },
+          body: JSON.stringify({ kickoff: true }),
+        });
+        const aiMsg = await jsonOrThrow(aiRes, "AI kickoff failed");
+        setMessages((prev) => [...prev, aiMsg]);
+      } catch (e) {
+        console.error("kickoff failed:", e);
+      }
     } catch (e) {
       alert(e.message || "Failed to start session");
     } finally {
