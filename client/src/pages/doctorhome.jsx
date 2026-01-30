@@ -17,19 +17,16 @@ export default function DoctorHome() {
   const [messages, setMessages] = useState([]);
   const [messagesBusy, setMessagesBusy] = useState(false);
 
-  const [summary, setSummary] = useState(null); // { summary_md, summary_at, ... }
+  const [summary, setSummary] = useState(null);
   const [summaryBusy, setSummaryBusy] = useState(false);
 
-  // patient profile (demographics + AI-extracted)
   const [profile, setProfile] = useState(null);
   const [profileBusy, setProfileBusy] = useState(false);
 
-  // NEW: doctor note state
   const [note, setNote] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
-  const [noteMeta, setNoteMeta] = useState(null); // { updated_at, extracted_medications? }
+  const [noteMeta, setNoteMeta] = useState(null); // { updated_at, extracted_profile_patch? }
 
-  // Load patients once
   useEffect(() => {
     (async () => {
       const res = await fetch("/api/doctor/patients", { headers: authHeader });
@@ -47,7 +44,6 @@ export default function DoctorHome() {
     }
   }
 
-  // Helper to render unknown/optional AI profile structure safely
   function ProfileRow({ label, value }) {
     if (
       value === null ||
@@ -112,7 +108,6 @@ export default function DoctorHome() {
     setSummary(null);
     setProfile(null);
 
-    // reset note UI when switching patients
     setNote("");
     setNoteMeta(null);
 
@@ -178,10 +173,9 @@ export default function DoctorHome() {
 
       setNoteMeta({
         updated_at: data.updated_at,
-        extracted_medications: data.extracted_medications || null,
+        extracted_profile_patch: data.extracted_profile_patch || null,
       });
 
-      // refresh profile so meds/notes show up immediately
       await refreshProfile(selectedPatient?.user_id);
     } catch (e) {
       alert(e.message || "Save failed");
@@ -195,10 +189,8 @@ export default function DoctorHome() {
     setMessages([]);
     setSummary(null);
 
-    // NEW: load note for this session
     loadNote(id);
 
-    // Messages
     setMessagesBusy(true);
     try {
       const msgs = await fetch(`/api/doctor/sessions/${id}/messages`, {
@@ -209,13 +201,12 @@ export default function DoctorHome() {
       setMessagesBusy(false);
     }
 
-    // Summary (if available)
     setSummaryBusy(true);
     try {
       const s = await fetch(`/api/doctor/sessions/${id}/summary`, {
         headers: authHeader,
       }).then(async (r) => {
-        if (!r.ok) return null; // 404 etc.
+        if (!r.ok) return null;
         return r.json();
       });
       setSummary(s);
@@ -285,11 +276,27 @@ export default function DoctorHome() {
     );
   }
 
-  // Useful derived flag for profile AI section
   const aiProfile = useMemo(() => {
     const d = profile?.profile?.data;
     return d && typeof d === "object" ? d : null;
   }, [profile]);
+
+  // Keep these visible even if empty (prevents “it only appears after doctor note”)
+  const medsValue = useMemo(() => {
+    if (!aiProfile) return null;
+    const v = aiProfile.medications;
+    if (Array.isArray(v)) return v.length ? v : "Not documented";
+    if (typeof v === "string") return v.trim() ? v : "Not documented";
+    return v ? v : "Not documented";
+  }, [aiProfile]);
+
+  const rxValue = useMemo(() => {
+    if (!aiProfile) return null;
+    const v = aiProfile.doctor_prescriptions;
+    if (Array.isArray(v)) return v.length ? v : "None documented";
+    if (typeof v === "string") return v.trim() ? v : "None documented";
+    return v ? v : "None documented";
+  }, [aiProfile]);
 
   return (
     <main
@@ -416,7 +423,7 @@ export default function DoctorHome() {
             <p>Open a session to view its summary.</p>
           )}
 
-          {/* NEW: Doctor Notes */}
+          {/* Doctor Notes */}
           <div
             style={{
               marginTop: 14,
@@ -472,10 +479,18 @@ export default function DoctorHome() {
                     {noteBusy ? "Saving..." : "Save note"}
                   </button>
 
-                  {noteMeta?.extracted_medications?.length ? (
+                  {noteMeta?.extracted_profile_patch ? (
                     <small style={{ opacity: 0.75 }}>
-                      Detected meds saved:{" "}
-                      {noteMeta.extracted_medications.join("; ")}
+                      Saved to profile
+                      {Array.isArray(
+                        noteMeta.extracted_profile_patch?.doctor_prescriptions
+                      ) &&
+                      noteMeta.extracted_profile_patch.doctor_prescriptions
+                        .length
+                        ? ` • rx: ${noteMeta.extracted_profile_patch.doctor_prescriptions.join(
+                            "; "
+                          )}`
+                        : ""}
                     </small>
                   ) : null}
                 </div>
@@ -546,6 +561,7 @@ export default function DoctorHome() {
                 <div style={{ fontWeight: 700, marginBottom: 6 }}>
                   AI-extracted profile
                 </div>
+
                 {aiProfile ? (
                   <>
                     <ProfileRow label="Age" value={aiProfile.age} />
@@ -558,10 +574,11 @@ export default function DoctorHome() {
                       label="Past surgical history"
                       value={aiProfile.past_surgical_history}
                     />
-                    <ProfileRow
-                      label="Medications"
-                      value={aiProfile.medications}
-                    />
+
+                    {/* Always visible (fallback strings) */}
+                    <ProfileRow label="Medications" value={medsValue} />
+                    <ProfileRow label="Doctor's prescription" value={rxValue} />
+
                     <ProfileRow label="Allergies" value={aiProfile.allergies} />
                     <ProfileRow
                       label="Social history"
@@ -579,6 +596,7 @@ export default function DoctorHome() {
                       label="Other notes"
                       value={aiProfile.other_notes}
                     />
+
                     {profile?.profile?.updated_at && (
                       <div style={{ marginTop: 6 }}>
                         <small style={{ opacity: 0.7 }}>
