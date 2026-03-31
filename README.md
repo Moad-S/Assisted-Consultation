@@ -1,270 +1,160 @@
-<!-- Improved compatibility of back to top link: See: https://github.com/othneildrew/Best-README-Template/pull/73 -->
-<a name="readme-top"></a>
-<!--
-*** Thanks for checking out the Best-README-Template. If you have a suggestion
-*** that would make this better, please fork the repo and create a pull request
-*** or simply open an issue with the tag "enhancement".
-*** Don't forget to give the project a star!
-*** Thanks again! Now go create something AMAZING! :D
--->
-
-
-
-<!-- PROJECT SHIELDS -->
-<!--
-*** I'm using markdown "reference style" links for readability.
-*** Reference links are enclosed in brackets [ ] instead of parentheses ( ).
-*** See the bottom of this document for the declaration of the reference variables
-*** for contributors-url, forks-url, etc. This is an optional, concise syntax you may use.
-*** https://www.markdownguide.org/basic-syntax/#reference-style-links
--->
-[![Contributors][contributors-shield]][contributors-url]
-[![Forks][forks-shield]][forks-url]
-[![Stargazers][stars-shield]][stars-url]
-[![Issues][issues-shield]][issues-url]
-[![MIT License][license-shield]][license-url]
-[![LinkedIn][linkedin-shield]][linkedin-url]
-
+# Care-AI
 
+An AI-powered medical intake platform for pre-consultation triage. Patients complete a structured clinical interview with an AI assistant before their appointment; doctors review session transcripts, write notes, and see AI-extracted patient profiles.
 
-<!-- PROJECT LOGO -->
-<br />
-<div align="center">
-  <a href="https://github.com/othneildrew/Best-README-Template">
-    <img src="images/logo.png" alt="Logo" width="80" height="80">
-  </a>
+---
 
-  <h3 align="center">Best-README-Template</h3>
+## How it works
 
-  <p align="center">
-    An awesome README template to jumpstart your projects!
-    <br />
-    <a href="https://github.com/othneildrew/Best-README-Template"><strong>Explore the docs »</strong></a>
-    <br />
-    <br />
-    <a href="https://github.com/othneildrew/Best-README-Template">View Demo</a>
-    ·
-    <a href="https://github.com/othneildrew/Best-README-Template/issues">Report Bug</a>
-    ·
-    <a href="https://github.com/othneildrew/Best-README-Template/issues">Request Feature</a>
-  </p>
-</div>
-
-
-
-<!-- TABLE OF CONTENTS -->
-<details>
-  <summary>Table of Contents</summary>
-  <ol>
-    <li>
-      <a href="#about-the-project">About The Project</a>
-      <ul>
-        <li><a href="#built-with">Built With</a></li>
-      </ul>
-    </li>
-    <li>
-      <a href="#getting-started">Getting Started</a>
-      <ul>
-        <li><a href="#prerequisites">Prerequisites</a></li>
-        <li><a href="#installation">Installation</a></li>
-      </ul>
-    </li>
-    <li><a href="#usage">Usage</a></li>
-    <li><a href="#roadmap">Roadmap</a></li>
-    <li><a href="#contributing">Contributing</a></li>
-    <li><a href="#license">License</a></li>
-    <li><a href="#contact">Contact</a></li>
-    <li><a href="#acknowledgments">Acknowledgments</a></li>
-  </ol>
-</details>
+**Patient flow**
+1. Patient logs in and starts a chat session
+2. The AI intake bot (powered by Gemini) guides them through a structured clinical history — chief concern, HPI, red flags, medications, allergies, social/family history
+3. When the interview ends, a background job summarizes the transcript and extracts a structured patient profile
 
+**Doctor flow**
+1. Doctor logs in and sees a list of patients with completed sessions
+2. Reviews the session transcript and AI-generated summary
+3. Writes clinical notes — AI extracts and merges structured data (diagnoses, medications, allergies) into the patient's profile
 
+---
 
-<!-- ABOUT THE PROJECT -->
-## About The Project
+## Tech stack
 
-[![Product Name Screen Shot][product-screenshot]](https://example.com)
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React 19, Vite, React Router |
+| Backend | Node.js, Express 4 |
+| Database | PostgreSQL (schema: `care_ai`) |
+| AI | Google Gemini 2.0 Flash Lite |
+| Auth | JWT (role-based: `patient` / `doctor`) |
 
-There are many great README templates available on GitHub; however, I didn't find one that really suited my needs so I created this enhanced one. I want to create a README template so amazing that it'll be the last one you ever need -- I think this is it.
+---
 
-Here's why:
-* Your time should be focused on creating something amazing. A project that solves a problem and helps others
-* You shouldn't be doing the same tasks over and over like creating a README from scratch
-* You should implement DRY principles to the rest of your life :smile:
+## Prerequisites
 
-Of course, no one template will serve all projects since your needs may be different. So I'll be adding more in the near future. You may also suggest changes by forking this repo and creating a pull request or opening an issue. Thanks to all the people have contributed to expanding this template!
+- Node.js 18+
+- PostgreSQL 14+ running locally (or a connection string to a remote instance)
+- A [Google AI Studio](https://aistudio.google.com) API key (free tier works)
 
-Use the `BLANK_README.md` to get started.
+---
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+## Setup
 
+### 1. Clone and install
 
+```bash
+git clone <repo-url>
+cd testing
+npm install
+npm --prefix server install
+npm --prefix client install
+```
 
-### Built With
+### 2. Configure environment
 
-This section should list any major frameworks/libraries used to bootstrap your project. Leave any add-ons/plugins for the acknowledgements section. Here are a few examples.
+Copy the example and fill in your values:
 
-* [![Next][Next.js]][Next-url]
-* [![React][React.js]][React-url]
-* [![Vue][Vue.js]][Vue-url]
-* [![Angular][Angular.io]][Angular-url]
-* [![Svelte][Svelte.dev]][Svelte-url]
-* [![Laravel][Laravel.com]][Laravel-url]
-* [![Bootstrap][Bootstrap.com]][Bootstrap-url]
-* [![JQuery][JQuery.com]][JQuery-url]
+```bash
+cp server/.env.example server/.env
+```
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+```env
+# server/.env
 
+PORT=5001
+NODE_ENV=development
 
+# PostgreSQL connection string
+DATABASE_URL=postgres://user:password@localhost:5432/care_ai_db
+PGSSLMODE=disable
 
-<!-- GETTING STARTED -->
-## Getting Started
+# Generate a strong random string for production
+JWT_SECRET=change_me_in_prod
 
-This is an example of how you may give instructions on setting up your project locally.
-To get a local copy up and running follow these simple example steps.
+# Google AI
+GOOGLE_API_KEY=your_google_api_key_here
+GEMINI_MODEL=gemini-2.0-flash-lite
 
-### Prerequisites
+# Optional: override the default intake system prompt
+# GEMINI_SYSTEM_PROMPT="..."
+```
 
-This is an example of how to list things you need to use the software and how to install them.
-* npm
-  ```sh
-  npm install npm@latest -g
-  ```
+> **Never commit `.env` to version control.** It contains secrets.
 
-### Installation
+### 3. Set up the database
 
-_Below is an example of how you can instruct your audience on installing and setting up your app. This template doesn't rely on any external dependencies or services._
+The app expects a PostgreSQL database with a `care_ai` schema. Create the schema and tables before starting the server. Key tables:
 
-1. Get a free API Key at [https://example.com](https://example.com)
-2. Clone the repo
-   ```sh
-   git clone https://github.com/your_username_/Project-Name.git
-   ```
-3. Install NPM packages
-   ```sh
-   npm install
-   ```
-4. Enter your API in `config.js`
-   ```js
-   const API_KEY = 'ENTER YOUR API';
-   ```
+```
+care_ai.users            — email, hashed password, role (patient|doctor), display_name
+care_ai.patients         — full_name, date_of_birth, sex (linked to users)
+care_ai.doctors          — linked to users
+care_ai.chat_sessions    — session per patient, status (active|ended), summary
+care_ai.chat_messages    — sender (patient|ai|doctor), content
+care_ai.patient_profiles — JSONB structured profile, built incrementally from AI extraction
+care_ai.doctor_session_notes — clinical notes per session
+```
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+### 4. Run in development
 
-
-
-<!-- USAGE EXAMPLES -->
-## Usage
-
-Use this space to show useful examples of how a project can be used. Additional screenshots, code examples and demos work well in this space. You may also link to more resources.
-
-_For more examples, please refer to the [Documentation](https://example.com)_
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-
-<!-- ROADMAP -->
-## Roadmap
-
-- [x] Add Changelog
-- [x] Add back to top links
-- [ ] Add Additional Templates w/ Examples
-- [ ] Add "components" document to easily copy & paste sections of the readme
-- [ ] Multi-language Support
-    - [ ] Chinese
-    - [ ] Spanish
-
-See the [open issues](https://github.com/othneildrew/Best-README-Template/issues) for a full list of proposed features (and known issues).
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-
-<!-- CONTRIBUTING -->
-## Contributing
-
-Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
-
-If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement".
-Don't forget to give the project a star! Thanks again!
-
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-
-<!-- LICENSE -->
-## License
-
-Distributed under the MIT License. See `LICENSE.txt` for more information.
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-
-<!-- CONTACT -->
-## Contact
-
-Your Name - [@your_twitter](https://twitter.com/your_username) - email@example.com
-
-Project Link: [https://github.com/your_username/repo_name](https://github.com/your_username/repo_name)
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-
-<!-- ACKNOWLEDGMENTS -->
-## Acknowledgments
-
-Use this space to list resources you find helpful and would like to give credit to. I've included a few of my favorites to kick things off!
-
-* [Choose an Open Source License](https://choosealicense.com)
-* [GitHub Emoji Cheat Sheet](https://www.webpagefx.com/tools/emoji-cheat-sheet)
-* [Malven's Flexbox Cheatsheet](https://flexbox.malven.co/)
-* [Malven's Grid Cheatsheet](https://grid.malven.co/)
-* [Img Shields](https://shields.io)
-* [GitHub Pages](https://pages.github.com)
-* [Font Awesome](https://fontawesome.com)
-* [React Icons](https://react-icons.github.io/react-icons/search)
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-
-<!-- MARKDOWN LINKS & IMAGES -->
-<!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
-[contributors-shield]: https://img.shields.io/github/contributors/othneildrew/Best-README-Template.svg?style=for-the-badge
-[contributors-url]: https://github.com/othneildrew/Best-README-Template/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/othneildrew/Best-README-Template.svg?style=for-the-badge
-[forks-url]: https://github.com/othneildrew/Best-README-Template/network/members
-[stars-shield]: https://img.shields.io/github/stars/othneildrew/Best-README-Template.svg?style=for-the-badge
-[stars-url]: https://github.com/othneildrew/Best-README-Template/stargazers
-[issues-shield]: https://img.shields.io/github/issues/othneildrew/Best-README-Template.svg?style=for-the-badge
-[issues-url]: https://github.com/othneildrew/Best-README-Template/issues
-[license-shield]: https://img.shields.io/github/license/othneildrew/Best-README-Template.svg?style=for-the-badge
-[license-url]: https://github.com/othneildrew/Best-README-Template/blob/master/LICENSE.txt
-[linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
-[linkedin-url]: https://linkedin.com/in/othneildrew
-[product-screenshot]: images/screenshot.png
-[Next.js]: https://img.shields.io/badge/next.js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white
-[Next-url]: https://nextjs.org/
-[React.js]: https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB
-[React-url]: https://reactjs.org/
-[Vue.js]: https://img.shields.io/badge/Vue.js-35495E?style=for-the-badge&logo=vuedotjs&logoColor=4FC08D
-[Vue-url]: https://vuejs.org/
-[Angular.io]: https://img.shields.io/badge/Angular-DD0031?style=for-the-badge&logo=angular&logoColor=white
-[Angular-url]: https://angular.io/
-[Svelte.dev]: https://img.shields.io/badge/Svelte-4A4A55?style=for-the-badge&logo=svelte&logoColor=FF3E00
-[Svelte-url]: https://svelte.dev/
-[Laravel.com]: https://img.shields.io/badge/Laravel-FF2D20?style=for-the-badge&logo=laravel&logoColor=white
-[Laravel-url]: https://laravel.com
-[Bootstrap.com]: https://img.shields.io/badge/Bootstrap-563D7C?style=for-the-badge&logo=bootstrap&logoColor=white
-[Bootstrap-url]: https://getbootstrap.com
-[JQuery.com]: https://img.shields.io/badge/jQuery-0769AD?style=for-the-badge&logo=jquery&logoColor=white
-[JQuery-url]: https://jquery.com 
+```bash
+npm run dev
+```
+
+This starts both the Express server (port 5001) and the Vite dev server (port 5173) concurrently. The client proxies `/api` requests to the server automatically.
+
+---
+
+## Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start both server and client with hot reload |
+| `npm run dev-server` | Server only (nodemon) |
+| `npm run dev-client` | Client only (Vite) |
+| `npm run build` | Build client for production |
+| `npm start` | Start server in production mode |
+
+---
+
+## Project structure
+
+```
+├── client/                  # React SPA (Vite)
+│   └── src/
+│       ├── pages/           # login, signup, patienthome, doctorhome
+│       ├── components/      # ProtectedRoute, Markdown
+│       └── auth.js          # JWT helpers
+│
+├── server/                  # Express API
+│   ├── routes/
+│   │   ├── auth.js          # POST /api/auth/signup, /login
+│   │   ├── patient.js       # Patient session & message endpoints
+│   │   ├── doctor.js        # Doctor dashboard, notes, profile endpoints
+│   │   └── ai.js            # AI chat reply endpoint
+│   ├── middleware/
+│   │   └── authz.js         # JWT verification & role checks
+│   ├── ai/
+│   │   └── summarizer.js    # Background summarization & profile extraction
+│   ├── utils/jwt.js
+│   ├── db.js                # PostgreSQL connection pool
+│   └── index.js             # Server entry point
+│
+└── package.json             # Root scripts (concurrently)
+```
+
+---
+
+## Known limitations (MVP)
+
+This is a development prototype. Before handling real patient data:
+
+- Add HTTPS / TLS termination
+- Replace `localStorage` JWT storage with `httpOnly` cookies
+- Add rate limiting on auth and AI endpoints (`express-rate-limit`)
+- Restrict CORS to known origins
+- Add input validation (`zod` or `joi`)
+- Write tests
+- Set up proper database migrations
+- Add `helmet.js` for HTTP security headers
+- Audit all PII handling for compliance requirements
