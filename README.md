@@ -25,7 +25,7 @@ An AI-powered medical intake platform for pre-consultation triage. Patients comp
 | Frontend | React 19, Vite, React Router |
 | Backend | Node.js, Express 4 |
 | Database | PostgreSQL (schema: `care_ai`) |
-| AI | Google Gemini 2.0 Flash Lite |
+| AI | Google Gemini 2.5 Flash  |
 | Auth | JWT (role-based: `patient` / `doctor`) |
 
 ---
