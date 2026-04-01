@@ -15,26 +15,19 @@ export default function PatientHome() {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // sessions list for the dropdown
   const [sessions, setSessions] = useState([]);
   const [sessionsBusy, setSessionsBusy] = useState(false);
-  const [pickId, setPickId] = useState(""); // selected session id from dropdown
+  const [pickId, setPickId] = useState("");
 
   const LS_KEY = "patient_active_session_id";
 
   function fmt(dt) {
-    try {
-      return new Date(dt).toLocaleString();
-    } catch {
-      return dt;
-    }
+    try { return new Date(dt).toLocaleString(); } catch { return dt; }
   }
 
   async function jsonOrThrow(res, fallbackMsg = "Request failed") {
     let data = null;
-    try {
-      data = await res.json();
-    } catch {}
+    try { data = await res.json(); } catch {}
     if (!res.ok) throw new Error((data && data.error) || fallbackMsg);
     return data;
   }
@@ -42,9 +35,7 @@ export default function PatientHome() {
   // ------------------------- load helpers ------------------------------------
 
   async function loadMessages(sid) {
-    const res = await fetch(`/api/patient/chat/${sid}/messages`, {
-      headers: authHeader,
-    });
+    const res = await fetch(`/api/patient/chat/${sid}/messages`, { headers: authHeader });
     const msgs = await jsonOrThrow(res, "Could not load messages");
     setMessages(msgs);
   }
@@ -63,84 +54,52 @@ export default function PatientHome() {
   async function refreshSessionsList() {
     setSessionsBusy(true);
     try {
-      const res = await fetch(`/api/patient/chat/history?limit=20`, {
-        headers: authHeader,
-      });
+      const res = await fetch(`/api/patient/chat/history?limit=20`, { headers: authHeader });
       const list = await jsonOrThrow(res, "Could not load sessions");
       setSessions(list || []);
-      // if selected in dropdown no longer valid, reset
-      if (pickId && !list.some((s) => String(s.id) === String(pickId))) {
-        setPickId("");
-      }
-    } catch {
-      // ignore
-    } finally {
-      setSessionsBusy(false);
-    }
+      if (pickId && !list.some((s) => String(s.id) === String(pickId))) setPickId("");
+    } catch {} finally { setSessionsBusy(false); }
   }
 
   // ------------------------- initial loads -----------------------------------
 
-  // Load profile
   useEffect(() => {
     (async () => {
       try {
         const res = await fetch("/api/patient/me", { headers: authHeader });
         const data = await res.json();
         setProfile(data || {});
-      } catch {
-        setProfile({});
-      }
+      } catch { setProfile({}); }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  // On mount/refresh, restore active session and load the sessions list
   useEffect(() => {
     (async () => {
-      // try cached
       const cached = localStorage.getItem(LS_KEY);
       if (cached && !sessionId) {
         const sid = Number(cached);
-        if (sid > 0) {
-          setSessionId(sid);
-          loadMessages(sid).catch(() => {});
-        }
+        if (sid > 0) { setSessionId(sid); loadMessages(sid).catch(() => {}); }
       }
-      // authoritative
       try {
-        const res = await fetch("/api/patient/chat/active", {
-          headers: authHeader,
-        });
+        const res = await fetch("/api/patient/chat/active", { headers: authHeader });
         const { id } = await jsonOrThrow(res, "Could not check active session");
         if (id && id !== sessionId) applySession(id);
         if (!id && cached) localStorage.removeItem(LS_KEY);
       } catch {}
-      // load list
       refreshSessionsList();
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  // Keep sessions list relatively fresh whenever the active session changes
-  useEffect(() => {
-    refreshSessionsList();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  useEffect(() => { refreshSessionsList(); }, [sessionId]);
 
   // ------------------------- actions -----------------------------------------
 
   async function startNewSession() {
     setBusy(true);
     try {
-      const res = await fetch("/api/patient/chat/start", {
-        method: "POST",
-        headers: authHeader,
-      });
+      const res = await fetch("/api/patient/chat/start", { method: "POST", headers: authHeader });
       const s = await jsonOrThrow(res, "Could not start session");
       applySession(s.id);
-
-      // NEW: ask the AI to kick off the conversation immediately
       try {
         const aiRes = await fetch(`/api/ai/patient/chat/${s.id}/reply`, {
           method: "POST",
@@ -149,14 +108,9 @@ export default function PatientHome() {
         });
         const aiMsg = await jsonOrThrow(aiRes, "AI kickoff failed");
         setMessages((prev) => [...prev, aiMsg]);
-      } catch (e) {
-        console.error("kickoff failed:", e);
-      }
-    } catch (e) {
-      alert(e.message || "Failed to start session");
-    } finally {
-      setBusy(false);
-    }
+      } catch (e) { console.error("kickoff failed:", e); }
+    } catch (e) { alert(e.message || "Failed to start session"); }
+    finally { setBusy(false); }
   }
 
   async function endSession() {
@@ -173,11 +127,8 @@ export default function PatientHome() {
       );
       applySession(null);
       await refreshSessionsList();
-    } catch (e) {
-      alert(e.message || "Failed to end session");
-    } finally {
-      setBusy(false);
-    }
+    } catch (e) { alert(e.message || "Failed to end session"); }
+    finally { setBusy(false); }
   }
 
   async function resumePicked() {
@@ -185,31 +136,20 @@ export default function PatientHome() {
     setBusy(true);
     try {
       const sid = Number(pickId);
-      const res = await fetch(`/api/patient/chat/${sid}/resume`, {
-        method: "POST",
-        headers: authHeader,
-      });
+      const res = await fetch(`/api/patient/chat/${sid}/resume`, { method: "POST", headers: authHeader });
       const s = await jsonOrThrow(res, "Could not resume session");
       applySession(s.id);
       setPickId("");
-    } catch (e) {
-      alert(e.message || "Resume failed");
-    } finally {
-      setBusy(false);
-    }
+    } catch (e) { alert(e.message || "Resume failed"); }
+    finally { setBusy(false); }
   }
 
   async function sendMessage(e) {
     e.preventDefault();
-    if (!sessionId) {
-      alert("Please start a session first.");
-      return;
-    }
+    if (!sessionId) { alert("Please start a session first."); return; }
     if (!text.trim()) return;
-
     setBusy(true);
     try {
-      // Save patient message
       const res = await fetch(`/api/patient/chat/${sessionId}/message`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
@@ -217,8 +157,6 @@ export default function PatientHome() {
       });
       const m = await jsonOrThrow(res, "Could not send message");
       setMessages((prev) => [...prev, m]);
-
-      // Ask AI to reply
       try {
         const aiRes = await fetch(`/api/ai/patient/chat/${sessionId}/reply`, {
           method: "POST",
@@ -227,210 +165,214 @@ export default function PatientHome() {
         });
         const ai = await jsonOrThrow(aiRes, "AI reply failed");
         setMessages((prev) => [...prev, ai]);
-      } catch (e) {
-        console.error(e);
-      }
-
+      } catch (e) { console.error(e); }
       setText("");
-    } catch (e2) {
-      alert(e2.message || "Send failed");
-    } finally {
-      setBusy(false);
-    }
+    } catch (e2) { alert(e2.message || "Send failed"); }
+    finally { setBusy(false); }
   }
 
   // ------------------------- derived data ------------------------------------
 
   const previousSessions = useMemo(() => {
-    // show ended sessions and any not-equal active ones
     return (sessions || []).filter((s) => s.id !== sessionId);
   }, [sessions, sessionId]);
 
-  // ------------------------- render ------------------------------------------
+  // ------------------------- render: Intake ----------------------------------
 
-  // Intake first if no profile yet AND no active session
   if (!profile || (!profile.full_name && !sessionId)) {
     return (
-      <main style={{ fontFamily: "system-ui", padding: 24, maxWidth: 520 }}>
-        <h1>Patient Intake</h1>
-        <form
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setBusy(true);
-            try {
-              const form = new FormData(e.currentTarget);
-              const body = {
-                fullName: form.get("fullName"),
-                dateOfBirth: form.get("dateOfBirth"),
-                sex: form.get("sex"),
-              };
+      <div className="max-w-lg mx-auto">
+        <h1 className="text-2xl font-bold text-text mb-2">Patient Intake</h1>
+        <p className="text-text-muted mb-6">Please fill in your details to begin your consultation.</p>
 
-              await jsonOrThrow(
-                await fetch("/api/patient/profile", {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    ...authHeader,
-                  },
-                  body: JSON.stringify(body),
-                }),
-                "Could not save intake"
-              );
+        <div className="bg-white border border-border rounded-xl shadow-sm p-6">
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setBusy(true);
+              try {
+                const form = new FormData(e.currentTarget);
+                const body = {
+                  fullName: form.get("fullName"),
+                  dateOfBirth: form.get("dateOfBirth"),
+                  sex: form.get("sex"),
+                };
+                await jsonOrThrow(
+                  await fetch("/api/patient/profile", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", ...authHeader },
+                    body: JSON.stringify(body),
+                  }),
+                  "Could not save intake"
+                );
+                await startNewSession();
+              } catch (e) { alert(e.message || "Failed to start"); }
+              finally { setBusy(false); }
+            }}
+            className="space-y-5"
+          >
+            <div>
+              <label className="block text-sm font-medium text-text-muted mb-1.5">Full name</label>
+              <input
+                name="fullName"
+                required
+                disabled={busy}
+                className="w-full px-3 py-2.5 rounded-lg border border-border bg-white text-text focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition disabled:bg-slate-100 disabled:opacity-60"
+              />
+            </div>
 
-              await startNewSession();
-            } catch (e) {
-              alert(e.message || "Failed to start");
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          <label>
-            Full name
-            <br />
-            <input
-              name="fullName"
-              required
-              style={{ width: "100%", padding: 8 }}
+            <div>
+              <label className="block text-sm font-medium text-text-muted mb-1.5">Date of birth</label>
+              <input
+                type="date"
+                name="dateOfBirth"
+                required
+                disabled={busy}
+                className="w-full px-3 py-2.5 rounded-lg border border-border bg-white text-text focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition disabled:bg-slate-100 disabled:opacity-60"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-text-muted mb-1.5">Sex</label>
+              <select
+                name="sex"
+                required
+                disabled={busy}
+                className="w-full px-3 py-2.5 rounded-lg border border-border bg-white text-text focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition disabled:bg-slate-100 disabled:opacity-60"
+              >
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="intersex">Intersex</option>
+                <option value="unknown">Other</option>
+                <option value="prefer_not_to_say">Prefer not to say</option>
+              </select>
+            </div>
+
+            <button
+              type="submit"
               disabled={busy}
-            />
-          </label>
-          <br />
-          <br />
-          <label>
-            Date of birth
-            <br />
-            <input
-              type="date"
-              name="dateOfBirth"
-              required
-              style={{ width: "100%", padding: 8 }}
-              disabled={busy}
-            />
-          </label>
-          <br />
-          <br />
-          <label>
-            Sex
-            <br />
-            <select
-              name="sex"
-              required
-              style={{ width: "100%", padding: 8 }}
-              disabled={busy}
+              className="w-full bg-primary-600 hover:bg-primary-700 text-white font-medium px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
-              <option value="male">Male</option>
-              <option value="female">Female</option>
-              <option value="intersex">Intersex</option>
-              <option value="unknown">Other</option>
-              <option value="prefer_not_to_say">Prefer not to say</option>
-            </select>
-          </label>
-          <br />
-          <br />
-          <button type="submit" style={{ padding: "8px 12px" }} disabled={busy}>
-            {busy ? "Starting..." : "Start session"}
-          </button>
-        </form>
-      </main>
+              {busy ? "Starting..." : "Start session"}
+            </button>
+          </form>
+        </div>
+      </div>
     );
   }
 
-  // Chat UI
-  return (
-    <main style={{ fontFamily: "system-ui", padding: 24, maxWidth: 900 }}>
-      <h1>Patient Chat</h1>
+  // ------------------------- render: Chat ------------------------------------
 
-      {/* controls row */}
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 12,
-          alignItems: "center",
-          marginBottom: 12,
-        }}
-      >
-        <span style={{ opacity: 0.85 }}>
-          Current session: <strong>#{sessionId ?? "—"}</strong>
+  return (
+    <div className="max-w-4xl mx-auto">
+      <h1 className="text-2xl font-bold text-text mb-4">Patient Chat</h1>
+
+      {/* Controls bar */}
+      <div className="flex flex-wrap items-center gap-3 mb-4 bg-white border border-border rounded-xl p-4 shadow-sm">
+        <span className="text-sm text-text-muted">
+          Session: <strong className="text-primary-700">#{sessionId ?? "—"}</strong>
         </span>
 
-        <button onClick={endSession} disabled={busy || !sessionId}>
+        <button
+          onClick={endSession}
+          disabled={busy || !sessionId}
+          className="text-sm bg-red-50 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+        >
           End Session
         </button>
 
-        <button onClick={startNewSession} disabled={busy}>
-          Start Another Session
+        <button
+          onClick={startNewSession}
+          disabled={busy}
+          className="text-sm bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+        >
+          New Session
         </button>
 
-        {/* Previous sessions dropdown */}
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div className="flex items-center gap-2 ml-auto">
           <select
             value={pickId}
             onChange={(e) => setPickId(e.target.value)}
             disabled={sessionsBusy || busy || previousSessions.length === 0}
-            style={{ minWidth: 260, padding: 6 }}
+            className="min-w-[240px] px-3 py-1.5 rounded-lg border border-border text-sm bg-white text-text focus:outline-none focus:ring-2 focus:ring-primary-500 transition disabled:opacity-60"
           >
             <option value="">
-              {sessionsBusy
-                ? "Loading sessions…"
-                : previousSessions.length === 0
-                ? "No previous sessions"
-                : "Select a previous session…"}
+              {sessionsBusy ? "Loading sessions..." : previousSessions.length === 0 ? "No previous sessions" : "Select a previous session..."}
             </option>
             {previousSessions.map((s) => (
               <option key={s.id} value={s.id}>
-                #{s.id} · {s.status} · {fmt(s.created_at)}
+                #{s.id} - {s.status} - {fmt(s.created_at)}
               </option>
             ))}
           </select>
-          <button onClick={resumePicked} disabled={!pickId || busy}>
+          <button
+            onClick={resumePicked}
+            disabled={!pickId || busy}
+            className="text-sm border border-primary-300 text-primary-700 hover:bg-primary-50 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          >
             Resume
           </button>
-          <button onClick={refreshSessionsList} disabled={sessionsBusy || busy}>
+          <button
+            onClick={refreshSessionsList}
+            disabled={sessionsBusy || busy}
+            className="text-sm text-text-muted hover:text-primary-600 px-2 py-1.5 rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
+          >
             Refresh
           </button>
         </div>
       </div>
 
-      <div
-        style={{
-          border: "1px solid #444",
-          borderRadius: 8,
-          padding: 12,
-          minHeight: 280,
-        }}
-      >
+      {/* Messages */}
+      <div className="bg-white border border-border rounded-xl p-4 min-h-[350px] max-h-[60vh] overflow-y-auto shadow-sm space-y-4">
         {messages.map((m) => (
-          <div key={m.id} style={{ margin: "6px 0" }}>
-            <strong>{m.sender}:</strong> <Markdown text={m.content} />
-            <small style={{ opacity: 0.6, marginLeft: 8 }}>
-              {fmt(m.created_at)}
-            </small>
+          <div
+            key={m.id}
+            className={`flex gap-3 ${m.sender === "patient" ? "justify-end" : "justify-start"}`}
+          >
+            {m.sender !== "patient" && (
+              <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-xs font-bold shrink-0 mt-1">
+                AI
+              </div>
+            )}
+            <div className={`max-w-[80%] ${m.sender === "patient" ? "bg-primary-50 rounded-2xl rounded-tr-sm px-4 py-2.5" : ""}`}>
+              {m.sender === "patient" ? (
+                <p className="text-sm text-text">{m.content}</p>
+              ) : (
+                <Markdown text={m.content} />
+              )}
+              <p className="text-xs text-text-muted mt-1">{fmt(m.created_at)}</p>
+            </div>
+            {m.sender === "patient" && (
+              <div className="w-8 h-8 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center text-xs font-bold shrink-0 mt-1">
+                You
+              </div>
+            )}
           </div>
         ))}
         {messages.length === 0 && (
-          <p style={{ opacity: 0.7 }}>No messages yet.</p>
+          <div className="flex items-center justify-center h-[280px] text-text-muted">
+            No messages yet. Start a session to begin.
+          </div>
         )}
       </div>
 
-      <form
-        onSubmit={sendMessage}
-        style={{ marginTop: 12, display: "flex", gap: 8 }}
-      >
+      {/* Input */}
+      <form onSubmit={sendMessage} className="mt-4 flex gap-3">
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
-          style={{ flex: 1, padding: 8 }}
-          placeholder={
-            sessionId ? "Type your message..." : "Start or resume a session"
-          }
+          placeholder={sessionId ? "Type your message..." : "Start or resume a session"}
           disabled={busy || !sessionId}
+          className="flex-1 px-4 py-2.5 rounded-lg border border-border bg-white text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition disabled:bg-slate-100 disabled:opacity-60"
         />
-        <button type="submit" disabled={busy || !sessionId}>
+        <button
+          type="submit"
+          disabled={busy || !sessionId}
+          className="bg-primary-600 hover:bg-primary-700 text-white font-medium px-5 py-2.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+        >
           Send
         </button>
       </form>
-    </main>
+    </div>
   );
 }

@@ -4,9 +4,7 @@ import { auth } from "../auth";
 
 async function jsonOrThrow(res, fallback = "Request failed") {
   let data = null;
-  try {
-    data = await res.json();
-  } catch {}
+  try { data = await res.json(); } catch {}
   if (!res.ok) throw new Error((data && data.error) || fallback);
   return data;
 }
@@ -60,132 +58,103 @@ export default function Signup() {
   }
 
   return (
-    <main style={{ fontFamily: "system-ui", padding: 24, maxWidth: 480 }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          marginBottom: 12,
-        }}
-      >
+    <div className="max-w-md mx-auto">
+      {/* Nav links */}
+      <div className="flex items-center gap-3 mb-6">
         <button
           type="button"
           onClick={() => nav("/")}
-          style={{
-            padding: "6px 10px",
-            borderRadius: 8,
-            border: "1px solid #444",
-            background: "#222",
-            color: "#fff",
-          }}
+          className="text-sm text-text-muted hover:text-primary-600 transition-colors cursor-pointer"
         >
-          ← Home
+          &larr; Home
         </button>
-        <Link to="/login/patient">Login</Link>
+        <Link to="/login/patient" className="text-sm text-text-muted hover:text-primary-600 transition-colors">
+          Already have an account? Log in
+        </Link>
       </div>
 
-      <h1>Create an account</h1>
+      <h1 className="text-2xl font-bold text-text mb-6">Create an account</h1>
 
       {already && (
-        <div
-          style={{
-            margin: "8px 0 16px",
-            padding: "10px 12px",
-            border: "1px solid #555",
-            borderRadius: 8,
-            background: "#1f1f1f",
-          }}
-        >
-          You’re currently signed in as <strong>{currentRole}</strong>.{" "}
+        <div className="mb-5 p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between">
+          <span className="text-sm text-amber-800">
+            Currently signed in as <strong className="capitalize">{currentRole}</strong>
+          </span>
           <button
             onClick={signOutAndStay}
-            style={{
-              marginLeft: 8,
-              border: "1px solid #444",
-              background: "#222",
-              color: "#fff",
-              padding: "4px 8px",
-              borderRadius: 8,
-              cursor: "pointer",
-            }}
+            className="text-sm text-red-600 hover:text-red-700 hover:bg-red-50 px-3 py-1.5 rounded-md transition-colors cursor-pointer"
           >
             Sign out to switch
           </button>
         </div>
       )}
 
-      <form onSubmit={onSubmit}>
-        <label>
-          Role
-          <br />
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            style={{ width: "100%", padding: 8 }}
+      <div className="bg-white border border-border rounded-xl shadow-sm p-6">
+        <form onSubmit={onSubmit} className="space-y-5">
+          <div>
+            <label className="block text-sm font-medium text-text-muted mb-1.5">Role</label>
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              disabled={busy || already}
+              className="w-full px-3 py-2.5 rounded-lg border border-border bg-white text-text focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition disabled:bg-slate-100 disabled:opacity-60"
+            >
+              <option value="patient">Patient</option>
+              <option value="doctor">Doctor</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-text-muted mb-1.5">
+              Display name <span className="text-text-muted font-normal">(optional)</span>
+            </label>
+            <input
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              disabled={busy || already}
+              className="w-full px-3 py-2.5 rounded-lg border border-border bg-white text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition disabled:bg-slate-100 disabled:opacity-60"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-text-muted mb-1.5">Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoComplete="username"
+              disabled={busy || already}
+              className="w-full px-3 py-2.5 rounded-lg border border-border bg-white text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition disabled:bg-slate-100 disabled:opacity-60"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-text-muted mb-1.5">Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete="new-password"
+              disabled={busy || already}
+              className="w-full px-3 py-2.5 rounded-lg border border-border bg-white text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition disabled:bg-slate-100 disabled:opacity-60"
+            />
+          </div>
+
+          <button
+            type="submit"
             disabled={busy || already}
+            className="w-full bg-primary-600 hover:bg-primary-700 text-white font-medium px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
-            <option value="patient">Patient</option>
-            <option value="doctor">Doctor</option>
-          </select>
-        </label>
-        <br />
-        <br />
+            {busy ? "Creating..." : "Sign up"}
+          </button>
 
-        <label>
-          Display name (optional)
-          <br />
-          <input
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            style={{ width: "100%", padding: 8 }}
-            disabled={busy || already}
-          />
-        </label>
-        <br />
-        <br />
-
-        <label>
-          Email
-          <br />
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            autoComplete="username"
-            style={{ width: "100%", padding: 8 }}
-            disabled={busy || already}
-          />
-        </label>
-        <br />
-        <br />
-
-        <label>
-          Password
-          <br />
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            autoComplete="new-password"
-            style={{ width: "100%", padding: 8 }}
-            disabled={busy || already}
-          />
-        </label>
-        <br />
-        <br />
-
-        <button
-          type="submit"
-          style={{ padding: "8px 12px" }}
-          disabled={busy || already}
-        >
-          {busy ? "Creating..." : "Sign up"}
-        </button>
-        {error && <p style={{ color: "tomato" }}>{error}</p>}
-      </form>
-    </main>
+          {error && (
+            <p className="text-sm text-danger font-medium">{error}</p>
+          )}
+        </form>
+      </div>
+    </div>
   );
 }
