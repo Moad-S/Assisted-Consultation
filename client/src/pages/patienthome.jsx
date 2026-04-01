@@ -177,6 +177,14 @@ export default function PatientHome() {
     return (sessions || []).filter((s) => s.id !== sessionId);
   }, [sessions, sessionId]);
 
+  // Map DB session IDs → per-patient display numbers (1, 2, 3...)
+  const sessionLabel = useMemo(() => {
+    const sorted = [...(sessions || [])].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    const map = {};
+    sorted.forEach((s, i) => { map[s.id] = i + 1; });
+    return (id) => map[id] ?? id;
+  }, [sessions]);
+
   // ------------------------- render: Intake ----------------------------------
 
   if (!profile || (!profile.full_name && !sessionId)) {
@@ -270,7 +278,7 @@ export default function PatientHome() {
       {/* Controls bar */}
       <div className="flex flex-wrap items-center gap-3 mb-4 bg-white border border-border rounded-xl p-4 shadow-sm">
         <span className="text-sm text-text-muted">
-          Session: <strong className="text-primary-700">#{sessionId ?? "—"}</strong>
+          Session: <strong className="text-primary-700">#{sessionId ? sessionLabel(sessionId) : "—"}</strong>
         </span>
 
         <button
@@ -301,7 +309,7 @@ export default function PatientHome() {
             </option>
             {previousSessions.map((s) => (
               <option key={s.id} value={s.id}>
-                #{s.id} - {s.status} - {fmt(s.created_at)}
+                Session {sessionLabel(s.id)} - {s.status} - {fmt(s.created_at)}
               </option>
             ))}
           </select>

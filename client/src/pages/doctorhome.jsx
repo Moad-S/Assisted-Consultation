@@ -174,6 +174,14 @@ export default function DoctorHome() {
     return v ? v : "None documented";
   }, [aiProfile]);
 
+  // Map DB session IDs → per-patient display numbers (1, 2, 3...)
+  const sessionLabel = useMemo(() => {
+    const sorted = [...(sessions || [])].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    const map = {};
+    sorted.forEach((s, i) => { map[s.id] = i + 1; });
+    return (id) => map[id] ?? id;
+  }, [sessions]);
+
   // ── Tab definitions ──
   const tabs = [
     { id: "messages", label: "Messages" },
@@ -242,7 +250,7 @@ export default function DoctorHome() {
                     }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-medium text-sm text-text">#{s.id}</span>
+                    <span className="font-medium text-sm text-text">Session {sessionLabel(s.id)}</span>
                     <span className="text-xs text-text-muted">{fmtDate(s.created_at)}</span>
                   </div>
                   <div className="flex items-center gap-1.5 mt-1.5">
@@ -279,7 +287,7 @@ export default function DoctorHome() {
                 }`}
             >
               {t.label}
-              {t.id === "messages" && selectedSessionId ? ` (#${selectedSessionId})` : ""}
+              {t.id === "messages" && selectedSessionId ? ` (#${sessionLabel(selectedSessionId)})` : ""}
             </button>
           ))}
 
@@ -287,7 +295,7 @@ export default function DoctorHome() {
           {selectedPatient && (
             <span className="ml-auto text-sm text-text-muted pr-2">
               {selectedPatient.name}
-              {selectedSessionId ? <> &middot; Session #{selectedSessionId}</> : ""}
+              {selectedSessionId ? <> &middot; Session {sessionLabel(selectedSessionId)}</> : ""}
             </span>
           )}
         </div>
