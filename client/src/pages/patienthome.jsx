@@ -321,8 +321,8 @@ export default function PatientHome() {
             >
               <option value="male">Male</option>
               <option value="female">Female</option>
-              <option value="nonbinary">Non-binary</option>
-              <option value="other">Other</option>
+              <option value="intersex">Intersex</option>
+              <option value="unknown">Other</option>
               <option value="prefer_not_to_say">Prefer not to say</option>
             </select>
           </label>

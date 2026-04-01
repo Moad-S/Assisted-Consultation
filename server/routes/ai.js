@@ -47,7 +47,7 @@ function normSex(s) {
  */
 async function fetchPatientContext(userId) {
   const baseQ = `
-    SELECT u.email, u.display_name, p.full_name, p.date_of_birth, p.sex, u.created_at
+    SELECT u.email, u.display_name, u.display_name AS full_name, p.birth_date AS date_of_birth, p.sex, u.created_at
       FROM care_ai.users u
       JOIN care_ai.patients p ON p.user_id = u.id
      WHERE u.id = $1
