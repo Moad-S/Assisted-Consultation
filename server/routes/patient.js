@@ -134,7 +134,7 @@ router.get("/me", requireAuth, requireRole("patient"), async (req, res) => {
   const userId = req.user.sub;
   const { rows } = await pool.query(
     `
-    SELECT u.id, u.email, u.display_name, u.display_name AS full_name, p.birth_date AS date_of_birth, p.sex
+    SELECT u.id, u.email, u.display_name, u.display_name AS full_name, p.date_of_birth AS date_of_birth, p.sex
       FROM care_ai.users u
       JOIN care_ai.patients p ON p.user_id = u.id
      WHERE u.id = $1
@@ -161,7 +161,7 @@ router.post(
     await pool.query(
       `
     UPDATE care_ai.patients
-       SET birth_date = COALESCE($3, birth_date),
+       SET date_of_birth = COALESCE($3, date_of_birth),
            sex        = COALESCE($4, sex)
      WHERE user_id = $1
   `,
