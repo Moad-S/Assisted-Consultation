@@ -675,7 +675,7 @@ router.get(
     const { rows } = await pool.query(`
     SELECT u.id AS user_id,
            COALESCE(u.display_name, u.email) AS name,
-           u.email, p.birth_date AS date_of_birth, p.sex, u.created_at
+           u.email, p.date_of_birth AS date_of_birth, p.sex, u.created_at
       FROM care_ai.users u
       JOIN care_ai.patients p ON p.user_id = u.id
      ORDER BY u.created_at DESC
@@ -718,7 +718,7 @@ router.get(
              COALESCE(u.display_name, u.email) AS name,
              u.email,
              u.display_name AS full_name,
-             p.birth_date AS date_of_birth,
+             p.date_of_birth AS date_of_birth,
              p.sex,
              u.created_at
         FROM care_ai.users u
