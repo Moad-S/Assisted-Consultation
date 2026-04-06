@@ -1,30 +1,24 @@
-// server/index.js
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
-
-// --- DB + Routes ---
 const { pool } = require("./db");
 const authRoutes = require("./routes/auth");
 const patientRoutes = require("./routes/patient");
 const doctorRoutes = require("./routes/doctor");
 const aiRoutes = require("./routes/ai");
 
-// --- Express setup ---
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
 
-// --- Route registration ---
 app.use("/api/auth", authRoutes);
 app.use("/api/patient", patientRoutes);
 app.use("/api/doctor", doctorRoutes);
 app.use("/api/ai", aiRoutes);
 
-// --- Health check (DB connectivity) ---
 app.get("/api/health/db", async (_req, res) => {
   try {
     const result = await pool.query("SELECT NOW()");
@@ -35,15 +29,10 @@ app.get("/api/health/db", async (_req, res) => {
   }
 });
 
-// --- Demo endpoint ---
 app.get("/api/hello", (_req, res) => {
   res.json({ message: "Hello from Express 👋" });
 });
 
-/**
- * List the models your key can call (works with SDK 0.24.x because it uses REST).
- * Returns names like "models/gemini-2.0-flash-lite".
- */
 app.get("/api/ai/models", async (_req, res) => {
   try {
     const key = process.env.GOOGLE_API_KEY;
@@ -64,12 +53,8 @@ app.get("/api/ai/models", async (_req, res) => {
   }
 });
 
-/**
- * Robust ping: tries several candidate model names until one works.
- * You can override with GEMINI_DEFAULT_MODEL in .env (without "models/").
- */
 const CANDIDATES = [
-  process.env.GEMINI_DEFAULT_MODEL, // e.g. "gemini-2.0-flash-lite"
+  process.env.GEMINI_DEFAULT_MODEL,
   "gemini-2.0-flash-lite",
   "gemini-2.0-flash",
   "gemini-2.5-flash",
@@ -102,7 +87,6 @@ app.get("/api/ai/ping", async (_req, res) => {
     .json({ ok: false, error: "All candidate models failed" });
 });
 
-// --- Startup ---
 app.listen(PORT, () =>
   console.log(`✅ API running at: http://localhost:${PORT}`)
 );

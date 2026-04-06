@@ -1,4 +1,3 @@
-// client/src/pages/doctorhome.jsx
 import { useEffect, useState, useMemo } from "react";
 import { auth } from "../auth";
 import Markdown from "../components/Markdown";
@@ -27,7 +26,6 @@ export default function DoctorHome() {
   const [noteBusy, setNoteBusy] = useState(false);
   const [noteMeta, setNoteMeta] = useState(null);
 
-  // Which detail tab is active
   const [detailTab, setDetailTab] = useState("messages");
 
   useEffect(() => {
@@ -174,7 +172,6 @@ export default function DoctorHome() {
     return v ? v : "None documented";
   }, [aiProfile]);
 
-  // Map DB session IDs → per-patient display numbers (1, 2, 3...)
   const sessionLabel = useMemo(() => {
     const sorted = [...(sessions || [])].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
     const map = {};
@@ -182,7 +179,6 @@ export default function DoctorHome() {
     return (id) => map[id] ?? id;
   }, [sessions]);
 
-  // ── Tab definitions ──
   const tabs = [
     { id: "messages", label: "Messages" },
     { id: "summary", label: "Summary" },
@@ -190,14 +186,11 @@ export default function DoctorHome() {
     { id: "profile", label: "Profile" },
   ];
 
-  // ── Render ──
   return (
     <div className="flex gap-5 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 h-[calc(100vh-7rem)]">
 
-      {/* ════════════ LEFT SIDEBAR: Patients + Sessions ════════════ */}
       <aside className="w-72 shrink-0 flex flex-col gap-4 overflow-hidden">
 
-        {/* Patients */}
         <div className="bg-white border border-border rounded-xl shadow-sm flex flex-col min-h-0 flex-1">
           <div className="px-4 pt-4 pb-2">
             <h2 className="text-base font-semibold text-text">Patients</h2>
@@ -223,7 +216,6 @@ export default function DoctorHome() {
           </div>
         </div>
 
-        {/* Sessions */}
         <div className="bg-white border border-border rounded-xl shadow-sm flex flex-col min-h-0 flex-1">
           <div className="px-4 pt-4 pb-2">
             <h2 className="text-base font-semibold text-text">
@@ -271,10 +263,8 @@ export default function DoctorHome() {
         </div>
       </aside>
 
-      {/* ════════════ RIGHT: Detail panel ════════════ */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
 
-        {/* Tab bar */}
         <div className="flex items-center gap-1 mb-4 bg-white border border-border rounded-xl shadow-sm p-1.5">
           {tabs.map((t) => (
             <button
@@ -291,7 +281,6 @@ export default function DoctorHome() {
             </button>
           ))}
 
-          {/* Session indicator */}
           {selectedPatient && (
             <span className="ml-auto text-sm text-text-muted pr-2">
               {selectedPatient.name}
@@ -300,10 +289,8 @@ export default function DoctorHome() {
           )}
         </div>
 
-        {/* Tab content */}
         <div className="flex-1 bg-white border border-border rounded-xl shadow-sm overflow-hidden flex flex-col min-h-0">
 
-          {/* ── Messages tab ── */}
           {detailTab === "messages" && (
             <div className="flex-1 overflow-y-auto p-5 space-y-3">
               {!selectedSessionId ? (
@@ -336,7 +323,6 @@ export default function DoctorHome() {
             </div>
           )}
 
-          {/* ── Summary tab ── */}
           {detailTab === "summary" && (
             <div className="flex-1 overflow-y-auto p-5">
               {!selectedSessionId ? (
@@ -354,7 +340,6 @@ export default function DoctorHome() {
             </div>
           )}
 
-          {/* ── Notes tab ── */}
           {detailTab === "notes" && (
             <div className="flex-1 overflow-y-auto p-5">
               {!selectedSessionId ? (
@@ -397,7 +382,6 @@ export default function DoctorHome() {
             </div>
           )}
 
-          {/* ── Profile tab ── */}
           {detailTab === "profile" && (
             <div className="flex-1 overflow-y-auto p-5">
               {profileBusy ? (
@@ -408,7 +392,6 @@ export default function DoctorHome() {
                 <EmptyState text="Profile unavailable." />
               ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                  {/* Demographics */}
                   <div className="bg-surface-alt border border-border/60 rounded-xl p-5">
                     <h3 className="text-sm font-semibold text-text mb-4 uppercase tracking-wide">Demographics</h3>
                     <div className="space-y-2.5 text-sm">
@@ -427,7 +410,6 @@ export default function DoctorHome() {
                     </div>
                   </div>
 
-                  {/* AI-extracted */}
                   <div className="bg-surface-alt border border-border/60 rounded-xl p-5">
                     <h3 className="text-sm font-semibold text-text mb-4 uppercase tracking-wide">AI-Extracted Profile</h3>
                     {aiProfile ? (

@@ -59,7 +59,6 @@ export default function Signup() {
 
   return (
     <div className="max-w-md mx-auto">
-      {/* Nav links */}
       <div className="flex items-center gap-3 mb-6">
         <button
           type="button"

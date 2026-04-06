@@ -1,4 +1,3 @@
-// client/src/auth.js
 const KEY = "auth";
 
 function decodeJwt(token) {
@@ -13,14 +12,12 @@ function decodeJwt(token) {
 
 export const auth = {
   save(apiResponse) {
-    // expects { token, user: { role, ... } }
     const { token, user } = apiResponse || {};
     if (!token || !user?.role) return;
-    const payload = decodeJwt(token); // { exp, sub, email, role? }
+    const payload = decodeJwt(token);
     const data = {
       token,
       role: user.role,
-      // store exp (seconds since epoch) if present
       exp: payload?.exp || null,
       user: { id: user.id, email: user.email, display_name: user.display_name },
     };
@@ -50,7 +47,7 @@ export const auth = {
 
   isExpired() {
     const exp = this.load()?.exp;
-    if (!exp) return false; // no exp means,treat as non-expiring for dev
+    if (!exp) return false;
     const nowSec = Math.floor(Date.now() / 1000);
     return nowSec >= exp;
   },

@@ -1,4 +1,3 @@
-// server/routes/ai.js
 const express = require("express");
 const router = express.Router();
 const { pool } = require("../db");
@@ -6,12 +5,10 @@ const { requireAuth, requireRole } = require("../middleware/authz");
 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-// --- Model + prompt config (backend-only) -----------------------------------
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
 const MODEL_NAME = process.env.GEMINI_MODEL || "gemini-2.0-flash-lite";
 const ENV_SYSTEM_PROMPT = (process.env.GEMINI_SYSTEM_PROMPT || "").trim();
 
-// Ensure session belongs to this patient and is active
 async function getOwnedSession(patientUserId, sessionId) {
   const { rows } = await pool.query(
     `SELECT id, status
@@ -22,7 +19,6 @@ async function getOwnedSession(patientUserId, sessionId) {
   return rows[0] || null;
 }
 
-/** ----------------- Patient context helpers (to avoid redundant Qs) ----------------- */
 function computeAge(dob) {
   if (!dob) return null;
   const d = new Date(dob);
@@ -41,10 +37,6 @@ function normSex(s) {
   return t || "unknown";
 }
 
-/**
- * Fetch demographics + optional AI-extracted profile.
- * Reads care_ai.users + care_ai.patients and (optionally) care_ai.patient_profiles.
- */
 async function fetchPatientContext(userId) {
   const baseQ = `
     SELECT u.email, u.display_name, u.display_name AS full_name, p.date_of_birth AS date_of_birth, p.sex, u.created_at
@@ -67,7 +59,7 @@ async function fetchPatientContext(userId) {
     const { rows } = await pool.query(profQ, [userId]);
     profile = rows[0] || null;
   } catch {
-    profile = null; // table may not exist yet
+    profile = null;
   }
 
   const name = base.full_name || base.display_name || base.email || "";
@@ -95,7 +87,6 @@ async function fetchPatientContext(userId) {
     },
   };
 
-  // Concise context block
   const lines = [];
   lines.push(`Patient: ${name || "—"}`);
   if (sex && sex !== "unknown") lines.push(`Sex: ${sex}`);
@@ -126,7 +117,6 @@ async function fetchPatientContext(userId) {
   return { ctx, textBlock };
 }
 
-/** ----------------- Intake-only scrub (keep your existing behavior) ----------------- */
 function stripAdvice(markdown = "") {
   const lines = String(markdown).split("\n");
   const cleaned = [];
@@ -170,14 +160,6 @@ function stripAdvice(markdown = "") {
     : "Thanks for the information. I’ll pass this to the doctor.";
 }
 
-// ----------------- Routes ----------------------------------------------------
-
-/**
- * POST /api/ai/patient/chat/:sessionId/reply
- * Body: { userText?: string, kickoff?: boolean }
- * If kickoff=true, the AI will initiate the conversation with a brief greeting
- * and a single chief-concern question (no advice).
- */
 router.post(
   "/patient/chat/:sessionId/reply",
   requireAuth,
@@ -194,14 +176,12 @@ router.post(
         return res.status(400).json({ error: "Missing userText" });
       }
 
-      // Ownership + active check
       const owned = await getOwnedSession(req.user.sub, sessionId);
       if (!owned) return res.status(404).json({ error: "Session not found" });
       if (owned.status && owned.status !== "active") {
         return res.status(400).json({ error: "Session is not active" });
       }
 
-      // Load short history (patient + ai only)
       const { rows: historyRows } = await pool.query(
         `SELECT sender, content
            FROM care_ai.chat_messages
@@ -218,10 +198,8 @@ router.post(
           parts: [{ text: m.content }],
         }));
 
-      // Fetch per-patient context and build dynamic system instruction
       const { ctx, textBlock } = await fetchPatientContext(req.user.sub);
 
-      // Demographic-driven guardrails to avoid redundant/inappropriate questions
       const demographicRules = [];
       if (ctx.sex && ctx.sex !== "unknown") {
         demographicRules.push(
@@ -233,7 +211,6 @@ router.post(
           "Do NOT ask for age or date of birth; acknowledge implicitly if needed."
         );
       }
-      // Pregnancy logic
       if (ctx.sex === "male") {
         demographicRules.push(
           "Do NOT ask about pregnancy, last menstrual period, or OB/GYN-specific questions."
@@ -249,13 +226,11 @@ router.post(
           );
         }
       } else {
-        // unknown/nonbinary case
         demographicRules.push(
           "Ask about pregnancy/LMP only if clearly relevant; otherwise avoid."
         );
       }
 
-      // Medication/allergy duplication reduction
       demographicRules.push(
         "If medications/allergies or chronic conditions are already listed in context, do not re-ask for long lists; instead briefly confirm changes only if relevant (e.g., 'Any changes to your medications since last time?')."
       );
@@ -283,7 +258,6 @@ router.post(
         systemInstruction: dynamicSystem,
       });
 
-      // Fallback injection for older SDKs
       const historyForChat = [
         {
           role: "user",
@@ -294,23 +268,19 @@ router.post(
 
       const chat = model.startChat({ history: historyForChat });
 
-      // Compose the user turn
       const finalUserText = kickoff
         ? "Begin the intake now. (One short chief-concern question only.)"
         : String(userText);
 
       const result = await chat.sendMessage(finalUserText);
 
-      // Robust text extraction across SDK versions
       const rawReply =
         result?.response?.text?.() ||
         result?.response?.candidates?.[0]?.content?.parts?.[0]?.text ||
         "(no response)";
 
-      // Enforce intake-only tone
       const reply = stripAdvice(rawReply);
 
-      // Save AI reply
       const { rows: saved } = await pool.query(
         `INSERT INTO care_ai.chat_messages (session_id, sender, content)
          VALUES ($1, 'ai', $2)

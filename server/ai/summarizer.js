@@ -1,4 +1,3 @@
-// server/ai/summarizer.js
 const { pool } = require("../db");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
@@ -74,10 +73,6 @@ const SUMMARY_PROMPT = (
   process.env.GEMINI_SUMMARY_PROMPT || DEFAULT_SUMMARY_PROMPT
 ).trim();
 
-/**
- * NEW: Profile extraction prompt (strict JSON).
- * This updates care_ai.patient_profiles AFTER each ended session.
- */
 const DEFAULT_PROFILE_PROMPT = `
 You are an EHR profile extractor. From the transcript, extract ONLY new or confirmed patient profile facts.
 Do NOT infer. If not explicitly stated, use null (or "unknown" for smoking/alcohol/drugs).
@@ -114,8 +109,6 @@ function clip(str, max = 32000) {
   if (!str) return "";
   return str.length > max ? str.slice(0, max) : str;
 }
-
-/** ------------------------- profile merge helpers ------------------------- */
 
 function safeText(x) {
   return String(x == null ? "" : x);
@@ -157,7 +150,6 @@ function mergeSubstanceUse(existing, incoming) {
     const iv = incoming[k];
     if (!iv) continue;
 
-    // do not overwrite known with unknown
     if (iv === "unknown") {
       if (!out[k]) out[k] = "unknown";
       continue;
@@ -165,7 +157,6 @@ function mergeSubstanceUse(existing, incoming) {
     out[k] = iv;
   }
 
-  // ensure keys exist if we have any substance_use at all
   for (const k of ["smoking", "alcohol", "drugs"]) {
     if (!out[k]) out[k] = "unknown";
   }
@@ -180,7 +171,6 @@ function mergeProfile(existingData, updateData) {
 
   const merged = { ...existing };
 
-  // list fields: union + dedupe
   for (const key of [
     "chronic_conditions",
     "past_surgical_history",
@@ -194,12 +184,10 @@ function mergeProfile(existingData, updateData) {
     if (combined.length) merged[key] = combined;
   }
 
-  // strings: prefer the new one if it exists (but never set to empty)
   if (isUsefulString(upd.social_history))
     merged.social_history = upd.social_history;
   if (isUsefulString(upd.other_notes)) merged.other_notes = upd.other_notes;
 
-  // substance_use
   if (upd.substance_use || existing.substance_use) {
     merged.substance_use = mergeSubstanceUse(
       existing.substance_use,
@@ -246,9 +234,6 @@ function profileHasAny(update) {
   );
 }
 
-/**
- * NEW: Extract profile updates from transcript using Gemini
- */
 async function extractProfileUpdateFromTranscript(transcript) {
   const model = genAI.getGenerativeModel({
     model: MODEL_NAME,
@@ -275,12 +260,7 @@ async function extractProfileUpdateFromTranscript(transcript) {
   return parsed;
 }
 
-/**
- * NEW: Upsert profile data into care_ai.patient_profiles
- * Merges with existing JSON to avoid losing info.
- */
 async function upsertPatientProfile(patientId, sourceSessionId, updateObj) {
-  // patient_profiles might not exist yet; fail safely
   let existing = {};
   try {
     const { rows } = await pool.query(
@@ -318,12 +298,7 @@ async function upsertPatientProfile(patientId, sourceSessionId, updateObj) {
   }
 }
 
-/**
- * Summarize a session (reads chat_messages, writes summary back to chat_sessions).
- * Returns the saved Markdown summary string.
- */
 async function summarizeSession(sessionId) {
-  // 0) get patient_id (needed for profile updates)
   const { rows: sessRows } = await pool.query(
     `SELECT id, patient_id
        FROM care_ai.chat_sessions
@@ -333,7 +308,6 @@ async function summarizeSession(sessionId) {
   );
   const patientId = sessRows[0]?.patient_id || null;
 
-  // 1) Load full transcript (patient + ai + doctor if you want)
   const { rows: msgs } = await pool.query(
     `SELECT sender, content
        FROM care_ai.chat_messages
@@ -355,7 +329,6 @@ async function summarizeSession(sessionId) {
 
   const transcript = msgs.map((m) => `${m.sender}: ${m.content}`).join("\n");
 
-  // 2) Call Gemini to summarize (existing behavior preserved)
   const model = genAI.getGenerativeModel({
     model: MODEL_NAME,
     systemInstruction: SUMMARY_PROMPT,
@@ -375,7 +348,6 @@ async function summarizeSession(sessionId) {
     result?.response?.candidates?.[0]?.content?.parts?.[0]?.text ||
     "(summary unavailable)";
 
-  // 3) Save back to the session row (existing behavior preserved)
   await pool.query(
     `UPDATE care_ai.chat_sessions
         SET summary_md = $2, summary_at = NOW()
@@ -383,8 +355,6 @@ async function summarizeSession(sessionId) {
     [sessionId, md]
   );
 
-  // 4) NEW: extract + upsert patient profile updates (non-blocking best effort)
-  // If anything fails here, we should NOT break summarization.
   if (patientId) {
     try {
       const update = await extractProfileUpdateFromTranscript(transcript);

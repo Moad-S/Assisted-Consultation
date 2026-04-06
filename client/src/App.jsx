@@ -1,4 +1,3 @@
-// client/src/App.jsx
 import { useEffect, useState } from "react";
 import {
   BrowserRouter,
@@ -31,7 +30,6 @@ function Layout({ children }) {
 
   return (
     <div className="min-h-screen bg-surface-alt">
-      {/* Navigation */}
       <header className="bg-white border-b border-border shadow-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <Link to="/" className="text-xl font-bold text-primary-700 hover:text-primary-800 transition-colors">
@@ -77,7 +75,6 @@ function Layout({ children }) {
         </div>
       </header>
 
-      {/* Page content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {children}
       </main>
@@ -102,7 +99,6 @@ function Home() {
   return (
     <Layout>
       <div className="text-center max-w-2xl mx-auto py-12 sm:py-20">
-        {/* Hero */}
         <h1 className="text-4xl sm:text-5xl font-bold text-primary-800 mb-4 tracking-tight">
           Care AI
         </h1>
@@ -120,7 +116,6 @@ function Home() {
           </Link>
         ) : (
           <>
-            {/* Role cards */}
             <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
               <Link
                 to="/login/patient"
@@ -162,7 +157,6 @@ function Home() {
           </>
         )}
 
-        {/* API status */}
         <div className="mt-12 flex items-center justify-center gap-2 text-sm text-text-muted">
           <span className={`w-2 h-2 rounded-full ${apiOk === true ? "bg-success" : apiOk === false ? "bg-danger" : "bg-warning"}`} />
           <span>Server: {apiMsg}</span>

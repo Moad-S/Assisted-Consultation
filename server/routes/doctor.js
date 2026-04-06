@@ -1,4 +1,3 @@
-// server/routes/doctor.js
 const router = require("express").Router();
 const { pool } = require("../db");
 const { requireAuth, requireRole } = require("../middleware/authz");
@@ -6,8 +5,6 @@ const { requireAuth, requireRole } = require("../middleware/authz");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
 const MODEL_NAME = process.env.GEMINI_MODEL || "gemini-2.0-flash-lite";
-
-/** ---------------- AI prompt (doctor note -> profile patch) ---------------- */
 
 const DEFAULT_NOTE_PROFILE_EXTRACT_PROMPT = `
 You extract structured patient-profile facts ONLY from a doctor's note.
@@ -60,8 +57,6 @@ const NOTE_PROFILE_EXTRACT_PROMPT = (
   process.env.GEMINI_NOTE_PROFILE_EXTRACT_PROMPT ||
   DEFAULT_NOTE_PROFILE_EXTRACT_PROMPT
 ).trim();
-
-/** ---------------- Small utilities ---------------- */
 
 function safeText(x) {
   return String(x == null ? "" : x);
@@ -130,8 +125,6 @@ function isUnknownLike(s) {
   return !t || t === "unknown" || t === "not asked" || t === "not documented";
 }
 
-/** ---------------- Canonicalization for neat profile ---------------- */
-
 function stripLeadingArticles(s) {
   return safeText(s)
     .trim()
@@ -181,10 +174,6 @@ function pluralizeUnit(nStr, unit) {
   return u.endsWith("s") ? u : `${u}s`;
 }
 
-/**
- * Canonicalize a prescription string with duration -> "(N unit[s])" at the end.
- * Keeps dose/route/frequency if present.
- */
 function canonicalizePrescription(s) {
   let t = stripLeadingArticles(s);
   t = t.replace(/[.,;:]+$/g, "").trim();
@@ -238,10 +227,6 @@ function canonicalizePrescription(s) {
   return titleCaseFirst(t);
 }
 
-/**
- * Patient meds list should be clean and typically without duration.
- * If AI mistakenly includes duration, strip it.
- */
 function canonicalizePatientMedication(s) {
   let t = stripLeadingArticles(s);
   t = t.replace(/[.,;:]+$/g, "").trim();
@@ -344,8 +329,6 @@ function isPrescriptionLikeItem(s) {
   return false;
 }
 
-/** ---------------- Patch safety net (prevents bad types / duplication) ---------------- */
-
 function sanitizeProfilePatch(patch) {
   if (!patch || typeof patch !== "object") return null;
 
@@ -397,8 +380,6 @@ function sanitizeProfilePatch(patch) {
   return out;
 }
 
-/** ---------------- DB helpers ---------------- */
-
 async function getSessionPatientId(sessionId) {
   const { rows } = await pool.query(
     `SELECT patient_id FROM care_ai.chat_sessions WHERE id = $1 LIMIT 1`,
@@ -441,8 +422,6 @@ async function upsertProfileData(patientId, sessionId, merged) {
     }
   }
 }
-
-/** ---------------- AI extraction (single call) ---------------- */
 
 async function extractProfilePatchFromDoctorNoteAI(noteMd) {
   const text = safeText(noteMd).trim();
@@ -497,7 +476,6 @@ async function extractProfilePatchFromDoctorNoteAI(noteMd) {
     };
   }
 
-  // Canonicalize + dedupe
   if (patch.allergies) {
     patch.allergies = dedupePreserve(
       patch.allergies.map(canonicalizeAllergy).filter(Boolean)
@@ -546,8 +524,7 @@ async function extractProfilePatchFromDoctorNoteAI(noteMd) {
     );
   }
 
-  // Backward-compat safety: if model put prescriptions into medications,
-  // move any "prescription-like" items to doctor_prescriptions.
+  // If the model put prescriptions into medications, move them
   if (
     (!patch.doctor_prescriptions || patch.doctor_prescriptions.length === 0) &&
     patch.medications &&
@@ -570,8 +547,6 @@ async function extractProfilePatchFromDoctorNoteAI(noteMd) {
   return Object.keys(patch).length ? patch : null;
 }
 
-/** ---------------- Merge patch into profile ---------------- */
-
 async function mergeDoctorNoteIntoPatientProfile({
   patientId,
   sessionId,
@@ -584,8 +559,7 @@ async function mergeDoctorNoteIntoPatientProfile({
 
   const merged = { ...(existing || {}) };
 
-  // One-time backward-compat migration:
-  // if old data stored prescriptions under "medications", move duration-like items to doctor_prescriptions
+  // Migrate any prescription-like items from medications to doctor_prescriptions
   const prevRx = normalizeList(merged.doctor_prescriptions);
   const prevMeds = normalizeList(merged.medications);
   if ((!prevRx || prevRx.length === 0) && prevMeds && prevMeds.length) {
@@ -619,11 +593,8 @@ async function mergeDoctorNoteIntoPatientProfile({
     if (out.length) merged[field] = out;
   };
 
-  // Patient meds (no durations)
   if (patch?.medications)
     mergeList("medications", canonicalizePatientMedication);
-
-  // Doctor prescriptions (durations neat)
   if (patch?.doctor_prescriptions)
     mergeList("doctor_prescriptions", canonicalizePrescription);
 
@@ -645,7 +616,6 @@ async function mergeDoctorNoteIntoPatientProfile({
     );
   }
 
-  // Always store clinician note per-session (replace same session)
   const prevNotes = Array.isArray(merged.clinician_notes)
     ? merged.clinician_notes
     : [];
@@ -664,9 +634,6 @@ async function mergeDoctorNoteIntoPatientProfile({
   await upsertProfileData(patientId, sessionId, merged);
 }
 
-/** ---------------- Existing endpoints (unchanged) ---------------- */
-
-/** List all registered patients (simple MVP) */
 router.get(
   "/patients",
   requireAuth,
@@ -684,7 +651,6 @@ router.get(
   }
 );
 
-/** List sessions for a patient (include summary flag) */
 router.get(
   "/patients/:patientId/sessions",
   requireAuth,
@@ -704,7 +670,6 @@ router.get(
   }
 );
 
-/** Get a patient's consolidated profile for the doctor. */
 router.get(
   "/patients/:patientId/profile",
   requireAuth,
@@ -763,7 +728,6 @@ router.get(
   }
 );
 
-/** Read messages in a session */
 router.get(
   "/sessions/:sessionId/messages",
   requireAuth,
@@ -783,7 +747,6 @@ router.get(
   }
 );
 
-/** Get saved AI summary for a session */
 router.get(
   "/sessions/:sessionId/summary",
   requireAuth,
@@ -804,7 +767,6 @@ router.get(
   }
 );
 
-/** Get doctor note for a session */
 router.get(
   "/sessions/:sessionId/note",
   requireAuth,
@@ -827,12 +789,6 @@ router.get(
   }
 );
 
-/**
- * Upsert doctor note for a session.
- * - saves the note
- * - extracts profile patch via AI (Gemini)
- * - merges patch into patient profile (neatly + deduped)
- */
 router.post(
   "/sessions/:sessionId/note",
   requireAuth,

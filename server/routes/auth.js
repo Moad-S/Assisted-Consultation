@@ -11,7 +11,6 @@ const signUser = (u) =>
     expiresIn: "2h",
   });
 
-// POST /api/auth/signup
 router.post("/signup", async (req, res) => {
   try {
     const { email, password, role, displayName } = req.body;
@@ -66,7 +65,6 @@ router.post("/signup", async (req, res) => {
   }
 });
 
-// POST /api/auth/login
 router.post("/login", async (req, res) => {
   try {
     const { email, password, role } = req.body;

@@ -1,17 +1,14 @@
-// server/routes/patient.js
 const router = require("express").Router();
 const { pool } = require("../db");
 const { requireAuth, requireRole } = require("../middleware/authz");
 
-// ------------------------- Background summarizer (already in your app) -------------------------
 let summarizeSession = null;
 try {
   ({ summarizeSession } = require("../ai/summarizer"));
 } catch {
-  summarizeSession = null; // not fatal
+  summarizeSession = null;
 }
 
-// ------------------------- Optional AI profile extractor (safe if missing) ----------------------
 let genAI = null;
 let MODEL_NAME = process.env.GEMINI_MODEL || "gemini-2.0-flash-lite";
 try {
@@ -64,11 +61,9 @@ function tryJsonParse(s) {
 }
 
 async function upsertProfileFromSession(sessionId) {
-  // Soft-fail if AI is not configured
   if (!genAI) return;
 
   try {
-    // Transcript
     const { rows: msgs } = await pool.query(
       `
       SELECT sender, content
@@ -84,9 +79,8 @@ async function upsertProfileFromSession(sessionId) {
     const transcript = msgs
       .map((m) => `${m.sender}: ${m.content}`)
       .join("\n")
-      .slice(-10000); // bound prompt size
+      .slice(-10000);
 
-    // Session owner (patient_id)
     const { rows: srows } = await pool.query(
       `SELECT patient_id FROM care_ai.chat_sessions WHERE id = $1`,
       [sessionId]
@@ -94,7 +88,6 @@ async function upsertProfileFromSession(sessionId) {
     if (!srows.length) return;
     const patientId = srows[0].patient_id;
 
-    // Ask Gemini
     const model = genAI.getGenerativeModel({ model: MODEL_NAME });
     const resp = await model.generateContent([
       { text: PROFILE_JSON_PROMPT },
@@ -109,7 +102,6 @@ async function upsertProfileFromSession(sessionId) {
     const extracted = tryJsonParse(text);
     if (!extracted) return;
 
-    // Merge (upsert). If table doesn't exist, catch & log without crashing.
     await pool.query(
       `
       INSERT INTO care_ai.patient_profiles (patient_id, data, source_session_id)
@@ -127,9 +119,6 @@ async function upsertProfileFromSession(sessionId) {
   }
 }
 
-// -------------------------------- Existing endpoints (unchanged behavior) ----------------------
-
-/** Get current patient's profile (intake fields) */
 router.get("/me", requireAuth, requireRole("patient"), async (req, res) => {
   const userId = req.user.sub;
   const { rows } = await pool.query(
@@ -144,7 +133,6 @@ router.get("/me", requireAuth, requireRole("patient"), async (req, res) => {
   res.json(rows[0] || {});
 });
 
-/** Save intake & optionally overwrite display_name */
 router.post(
   "/profile",
   requireAuth,
@@ -172,12 +160,6 @@ router.post(
   }
 );
 
-/**
- * Helper: end any active session(s) for this patient.
- * If sessionId is provided, scope to that row.
- * Returns the list of ended session IDs.
- * Also triggers background summarization & profile extraction for each ended session.
- */
 async function endActiveSessionForPatient(patientId, sessionId = null) {
   const params = [patientId];
   let where = `patient_id = $1 AND status = 'active'`;
@@ -196,7 +178,6 @@ async function endActiveSessionForPatient(patientId, sessionId = null) {
   const { rows } = await pool.query(q, params);
   const endedIds = rows.map((r) => r.id);
 
-  // Fire-and-forget: summarization + profile extraction
   if (endedIds.length) {
     for (const sid of endedIds) {
       if (summarizeSession) {
@@ -217,7 +198,6 @@ async function endActiveSessionForPatient(patientId, sessionId = null) {
   return endedIds;
 }
 
-/** Start a new chat session – ends any active one first */
 router.post(
   "/chat/start",
   requireAuth,
@@ -225,10 +205,8 @@ router.post(
   async (req, res) => {
     const userId = req.user.sub;
 
-    // End any current active sessions (and summarize/extract in background)
     await endActiveSessionForPatient(userId, null);
 
-    // Create a new active session
     const ins = await pool.query(
       `
     INSERT INTO care_ai.chat_sessions (patient_id, status)
@@ -241,7 +219,6 @@ router.post(
   }
 );
 
-/** End current (or given) session */
 router.post(
   "/chat/end",
   requireAuth,
@@ -256,7 +233,6 @@ router.post(
   }
 );
 
-/** Get the active session id (or null) */
 router.get(
   "/chat/active",
   requireAuth,
@@ -277,7 +253,6 @@ router.get(
   }
 );
 
-/** List recent sessions (active + ended) */
 router.get(
   "/chat/history",
   requireAuth,
@@ -299,9 +274,6 @@ router.get(
   }
 );
 
-/**
- * Resume an older session (make it active again).
- */
 router.post(
   "/chat/:sessionId/resume",
   requireAuth,
@@ -311,7 +283,6 @@ router.post(
     const sid = Number(req.params.sessionId);
     if (!sid) return res.status(400).json({ error: "Invalid sessionId" });
 
-    // Verify the session belongs to the patient
     const { rows: own } = await pool.query(
       `SELECT 1 FROM care_ai.chat_sessions WHERE id = $1 AND patient_id = $2`,
       [sid, userId]
@@ -319,7 +290,6 @@ router.post(
     if (!own.length)
       return res.status(404).json({ error: "Session not found" });
 
-    // End any currently active session (except the one we’re activating)
     await pool.query(
       `
       UPDATE care_ai.chat_sessions
@@ -329,7 +299,6 @@ router.post(
       [userId, sid]
     );
 
-    // Mark the chosen session as active (clear ended_at if present)
     const { rows } = await pool.query(
       `
       UPDATE care_ai.chat_sessions
@@ -344,7 +313,6 @@ router.post(
   }
 );
 
-/** Add a message to a session (patient) */
 router.post(
   "/chat/:sessionId/message",
   requireAuth,
@@ -356,7 +324,6 @@ router.post(
     if (!sid || !content)
       return res.status(400).json({ error: "content required" });
 
-    // ensure session belongs to this patient
     const { rows: own } = await pool.query(
       `SELECT 1 FROM care_ai.chat_sessions WHERE id = $1 AND patient_id = $2`,
       [sid, userId]
@@ -376,7 +343,6 @@ router.post(
   }
 );
 
-/** List messages for a session (patient) */
 router.get(
   "/chat/:sessionId/messages",
   requireAuth,

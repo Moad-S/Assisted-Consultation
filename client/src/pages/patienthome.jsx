@@ -1,4 +1,3 @@
-// client/src/pages/patienthome.jsx
 import { useEffect, useState, useMemo } from "react";
 import { auth } from "../auth";
 import Markdown from "../components/Markdown";
@@ -32,7 +31,6 @@ export default function PatientHome() {
     return data;
   }
 
-  // ------------------------- load helpers ------------------------------------
 
   async function loadMessages(sid) {
     const res = await fetch(`/api/patient/chat/${sid}/messages`, { headers: authHeader });
@@ -61,7 +59,6 @@ export default function PatientHome() {
     } catch {} finally { setSessionsBusy(false); }
   }
 
-  // ------------------------- initial loads -----------------------------------
 
   useEffect(() => {
     (async () => {
@@ -92,7 +89,6 @@ export default function PatientHome() {
 
   useEffect(() => { refreshSessionsList(); }, [sessionId]);
 
-  // ------------------------- actions -----------------------------------------
 
   async function startNewSession() {
     setBusy(true);
@@ -171,13 +167,11 @@ export default function PatientHome() {
     finally { setBusy(false); }
   }
 
-  // ------------------------- derived data ------------------------------------
 
   const previousSessions = useMemo(() => {
     return (sessions || []).filter((s) => s.id !== sessionId);
   }, [sessions, sessionId]);
 
-  // Map DB session IDs → per-patient display numbers (1, 2, 3...)
   const sessionLabel = useMemo(() => {
     const sorted = [...(sessions || [])].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
     const map = {};
@@ -185,7 +179,6 @@ export default function PatientHome() {
     return (id) => map[id] ?? id;
   }, [sessions]);
 
-  // ------------------------- render: Intake ----------------------------------
 
   if (!profile || (!profile.full_name && !sessionId)) {
     return (
@@ -269,13 +262,11 @@ export default function PatientHome() {
     );
   }
 
-  // ------------------------- render: Chat ------------------------------------
 
   return (
     <div className="max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold text-text mb-4">Patient Chat</h1>
 
-      {/* Controls bar */}
       <div className="flex flex-wrap items-center gap-3 mb-4 bg-white border border-border rounded-xl p-4 shadow-sm">
         <span className="text-sm text-text-muted">
           Session: <strong className="text-primary-700">#{sessionId ? sessionLabel(sessionId) : "—"}</strong>
@@ -330,7 +321,6 @@ export default function PatientHome() {
         </div>
       </div>
 
-      {/* Messages */}
       <div className="bg-white border border-border rounded-xl p-4 min-h-[350px] max-h-[60vh] overflow-y-auto shadow-sm space-y-4">
         {messages.map((m) => (
           <div
@@ -364,7 +354,6 @@ export default function PatientHome() {
         )}
       </div>
 
-      {/* Input */}
       <form onSubmit={sendMessage} className="mt-4 flex gap-3">
         <input
           value={text}
