@@ -280,6 +280,9 @@ router.post(
         "(no response)";
 
       const reply = stripAdvice(rawReply);
+      const lower = reply.toLowerCase();
+      const autoEnd = /pass this to the doctor|time .* to see the doctor|forward .* to the doctor|information .* gathered|that.s all .* need/i.test(reply)
+        && !lower.includes("?");
 
       const { rows: saved } = await pool.query(
         `INSERT INTO care_ai.chat_messages (session_id, sender, content)
@@ -288,7 +291,14 @@ router.post(
         [sessionId, reply]
       );
 
-      return res.status(201).json(saved[0]);
+      if (autoEnd) {
+        await pool.query(
+          `UPDATE care_ai.sessions SET status = 'ended', ended_at = NOW() WHERE id = $1 AND status = 'active'`,
+          [sessionId]
+        );
+      }
+
+      return res.status(201).json({ ...saved[0], auto_end: autoEnd });
     } catch (err) {
       console.error("AI reply error:", err);
       return res.status(500).json({ error: "AI reply failed" });

@@ -161,6 +161,10 @@ export default function PatientHome() {
         });
         const ai = await jsonOrThrow(aiRes, "AI reply failed");
         setMessages((prev) => [...prev, ai]);
+        if (ai.auto_end) {
+          applySession(null);
+          await refreshSessionsList();
+        }
       } catch (e) { console.error(e); }
       setText("");
     } catch (e2) { alert(e2.message || "Send failed"); }
