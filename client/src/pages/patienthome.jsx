@@ -180,7 +180,8 @@ export default function PatientHome() {
   }, [sessions]);
 
 
-  if (!profile || (!profile.full_name && !sessionId)) {
+  const needsIntake = !profile || ((!profile.full_name || !profile.date_of_birth || !profile.sex) && !sessionId);
+  if (needsIntake) {
     return (
       <div className="max-w-lg mx-auto">
         <h1 className="text-2xl font-bold text-text mb-2">Patient Intake</h1>
@@ -217,6 +218,7 @@ export default function PatientHome() {
               <input
                 name="fullName"
                 required
+                defaultValue={profile?.full_name || ""}
                 disabled={busy}
                 className="w-full px-3 py-2.5 rounded-lg border border-border bg-white text-text focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition disabled:bg-slate-100 disabled:opacity-60"
               />
@@ -228,6 +230,7 @@ export default function PatientHome() {
                 type="date"
                 name="dateOfBirth"
                 required
+                defaultValue={profile?.date_of_birth ? profile.date_of_birth.slice(0, 10) : ""}
                 disabled={busy}
                 className="w-full px-3 py-2.5 rounded-lg border border-border bg-white text-text focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition disabled:bg-slate-100 disabled:opacity-60"
               />
@@ -238,6 +241,7 @@ export default function PatientHome() {
               <select
                 name="sex"
                 required
+                defaultValue={profile?.sex || "male"}
                 disabled={busy}
                 className="w-full px-3 py-2.5 rounded-lg border border-border bg-white text-text focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition disabled:bg-slate-100 disabled:opacity-60"
               >

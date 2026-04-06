@@ -138,25 +138,30 @@ router.post(
   requireAuth,
   requireRole("patient"),
   async (req, res) => {
-    const userId = req.user.sub;
-    const { fullName, dateOfBirth, sex } = req.body || {};
+    try {
+      const userId = req.user.sub;
+      const { fullName, dateOfBirth, sex } = req.body || {};
 
-    await pool.query(
-      `UPDATE care_ai.users SET display_name = COALESCE($2, display_name) WHERE id = $1`,
-      [userId, fullName || null]
-    );
+      await pool.query(
+        `UPDATE care_ai.users SET display_name = COALESCE($2, display_name) WHERE id = $1`,
+        [userId, fullName || null]
+      );
 
-    await pool.query(
-      `
-    UPDATE care_ai.patients
-       SET date_of_birth = COALESCE($3, date_of_birth),
-           sex        = COALESCE($4, sex)
-     WHERE user_id = $1
-  `,
-      [userId, fullName || null, dateOfBirth || null, sex || null]
-    );
+      await pool.query(
+        `
+      UPDATE care_ai.patients
+         SET date_of_birth = COALESCE($2, date_of_birth),
+             sex        = COALESCE($3, sex)
+       WHERE user_id = $1
+    `,
+        [userId, dateOfBirth || null, sex || null]
+      );
 
-    res.json({ ok: true });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[patient profile] save error:", err.message || err);
+      res.status(500).json({ error: err.message || "Failed to save profile" });
+    }
   }
 );
 
