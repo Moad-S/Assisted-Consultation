@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { auth } from "../auth";
 import Markdown from "../components/Markdown";
 
@@ -18,6 +18,8 @@ export default function PatientHome() {
   const [sessionsBusy, setSessionsBusy] = useState(false);
   const [pickId, setPickId] = useState("");
 
+  const messagesEndRef = useRef(null);
+
   const LS_KEY = "patient_active_session_id";
 
   function fmt(dt) {
@@ -30,7 +32,6 @@ export default function PatientHome() {
     if (!res.ok) throw new Error((data && data.error) || fallbackMsg);
     return data;
   }
-
 
   async function loadMessages(sid) {
     const res = await fetch(`/api/patient/chat/${sid}/messages`, { headers: authHeader });
@@ -58,7 +59,6 @@ export default function PatientHome() {
       if (pickId && !list.some((s) => String(s.id) === String(pickId))) setPickId("");
     } catch {} finally { setSessionsBusy(false); }
   }
-
 
   useEffect(() => {
     (async () => {
@@ -89,6 +89,9 @@ export default function PatientHome() {
 
   useEffect(() => { refreshSessionsList(); }, [sessionId]);
 
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   async function startNewSession() {
     setBusy(true);
@@ -171,7 +174,6 @@ export default function PatientHome() {
     finally { setBusy(false); }
   }
 
-
   const previousSessions = useMemo(() => {
     return (sessions || []).filter((s) => s.id !== sessionId);
   }, [sessions, sessionId]);
@@ -183,15 +185,22 @@ export default function PatientHome() {
     return (id) => map[id] ?? id;
   }, [sessions]);
 
-
+  /* ─── INTAKE FORM ─── */
   const needsIntake = !profile || ((!profile.full_name || !profile.date_of_birth || !profile.sex) && !sessionId);
   if (needsIntake) {
     return (
-      <div className="max-w-lg mx-auto">
-        <h1 className="text-2xl font-bold text-text mb-2">Patient Intake</h1>
-        <p className="text-text-muted mb-6">Please fill in your details to begin your consultation.</p>
+      <div className="max-w-md mx-auto pt-8 sm:pt-16">
+        <div className="text-center mb-8">
+          <div className="w-14 h-14 mx-auto mb-5 rounded-2xl bg-primary-100 text-primary-700 flex items-center justify-center shadow-sm">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+            </svg>
+          </div>
+          <h1 className="font-display text-2xl font-bold text-ink tracking-tight mb-2">Patient Intake</h1>
+          <p className="text-sm text-ink-muted">Fill in your details to begin your consultation</p>
+        </div>
 
-        <div className="bg-white border border-border rounded-xl shadow-sm p-6">
+        <div className="bg-white rounded-2xl shadow-sm border border-border p-7">
           <form
             onSubmit={async (e) => {
               e.preventDefault();
@@ -218,36 +227,36 @@ export default function PatientHome() {
             className="space-y-5"
           >
             <div>
-              <label className="block text-sm font-medium text-text-muted mb-1.5">Full name</label>
+              <label className="block text-sm font-medium text-ink mb-2">Full name</label>
               <input
                 name="fullName"
                 required
                 defaultValue={profile?.full_name || ""}
                 disabled={busy}
-                className="w-full px-3 py-2.5 rounded-lg border border-border bg-white text-text focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition disabled:bg-slate-100 disabled:opacity-60"
+                className="w-full px-4 py-3 rounded-xl border border-border bg-canvas/50 text-ink placeholder:text-ink-faint focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition disabled:opacity-50"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-text-muted mb-1.5">Date of birth</label>
+              <label className="block text-sm font-medium text-ink mb-2">Date of birth</label>
               <input
                 type="date"
                 name="dateOfBirth"
                 required
                 defaultValue={profile?.date_of_birth ? profile.date_of_birth.slice(0, 10) : ""}
                 disabled={busy}
-                className="w-full px-3 py-2.5 rounded-lg border border-border bg-white text-text focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition disabled:bg-slate-100 disabled:opacity-60"
+                className="w-full px-4 py-3 rounded-xl border border-border bg-canvas/50 text-ink placeholder:text-ink-faint focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition disabled:opacity-50"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-text-muted mb-1.5">Sex</label>
+              <label className="block text-sm font-medium text-ink mb-2">Sex</label>
               <select
                 name="sex"
                 required
                 defaultValue={profile?.sex || "male"}
                 disabled={busy}
-                className="w-full px-3 py-2.5 rounded-lg border border-border bg-white text-text focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition disabled:bg-slate-100 disabled:opacity-60"
+                className="w-full px-4 py-3 rounded-xl border border-border bg-canvas/50 text-ink focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition disabled:opacity-50"
               >
                 <option value="male">Male</option>
                 <option value="female">Female</option>
@@ -260,9 +269,9 @@ export default function PatientHome() {
             <button
               type="submit"
               disabled={busy}
-              className="w-full bg-primary-600 hover:bg-primary-700 text-white font-medium px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              className="w-full bg-primary-600 hover:bg-primary-700 text-white font-semibold px-4 py-3 rounded-full transition-all shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
-              {busy ? "Starting..." : "Start session"}
+              {busy ? "Starting..." : "Begin consultation"}
             </button>
           </form>
         </div>
@@ -270,112 +279,126 @@ export default function PatientHome() {
     );
   }
 
-
+  /* ─── CHAT VIEW ─── */
   return (
-    <div className="max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold text-text mb-4">Patient Chat</h1>
+    <div className="max-w-3xl mx-auto flex flex-col h-[calc(100vh-7rem)]">
+      {/* Session bar */}
+      <div className="flex flex-wrap items-center gap-2.5 mb-4 bg-white rounded-2xl border border-border p-3 shadow-sm">
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
+          <span className="text-sm font-semibold text-ink font-display">
+            Session #{sessionId ? sessionLabel(sessionId) : "\u2014"}
+          </span>
+        </div>
 
-      <div className="flex flex-wrap items-center gap-3 mb-4 bg-white border border-border rounded-xl p-4 shadow-sm">
-        <span className="text-sm text-text-muted">
-          Session: <strong className="text-primary-700">#{sessionId ? sessionLabel(sessionId) : "—"}</strong>
-        </span>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={endSession}
+            disabled={busy || !sessionId}
+            className="text-xs font-medium text-danger bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-full transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          >
+            End
+          </button>
+          <button
+            onClick={startNewSession}
+            disabled={busy}
+            className="text-xs font-medium text-primary-700 bg-primary-50 hover:bg-primary-100 px-3 py-1.5 rounded-full transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          >
+            New Session
+          </button>
+        </div>
 
-        <button
-          onClick={endSession}
-          disabled={busy || !sessionId}
-          className="text-sm bg-red-50 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-        >
-          End Session
-        </button>
-
-        <button
-          onClick={startNewSession}
-          disabled={busy}
-          className="text-sm bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-        >
-          New Session
-        </button>
-
-        <div className="flex items-center gap-2 ml-auto">
+        <div className="flex items-center gap-1.5 ml-auto">
           <select
             value={pickId}
             onChange={(e) => setPickId(e.target.value)}
             disabled={sessionsBusy || busy || previousSessions.length === 0}
-            className="min-w-[240px] px-3 py-1.5 rounded-lg border border-border text-sm bg-white text-text focus:outline-none focus:ring-2 focus:ring-primary-500 transition disabled:opacity-60"
+            className="min-w-[200px] px-3 py-1.5 rounded-full border border-border text-xs bg-canvas/50 text-ink focus:ring-2 focus:ring-primary-400 transition disabled:opacity-40"
           >
             <option value="">
-              {sessionsBusy ? "Loading sessions..." : previousSessions.length === 0 ? "No previous sessions" : "Select a previous session..."}
+              {sessionsBusy ? "Loading..." : previousSessions.length === 0 ? "No previous sessions" : "Previous sessions..."}
             </option>
             {previousSessions.map((s) => (
               <option key={s.id} value={s.id}>
-                Session {sessionLabel(s.id)} - {s.status} - {fmt(s.created_at)}
+                #{sessionLabel(s.id)} - {s.status} - {fmt(s.created_at)}
               </option>
             ))}
           </select>
           <button
             onClick={resumePicked}
             disabled={!pickId || busy}
-            className="text-sm border border-primary-300 text-primary-700 hover:bg-primary-50 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            className="text-xs font-medium text-ink-muted border border-border hover:border-primary-400 hover:text-primary-700 px-3 py-1.5 rounded-full transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
           >
             Resume
-          </button>
-          <button
-            onClick={refreshSessionsList}
-            disabled={sessionsBusy || busy}
-            className="text-sm text-text-muted hover:text-primary-600 px-2 py-1.5 rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
-          >
-            Refresh
           </button>
         </div>
       </div>
 
-      <div className="bg-white border border-border rounded-xl p-4 min-h-[350px] max-h-[60vh] overflow-y-auto shadow-sm space-y-4">
+      {/* Messages */}
+      <div className="flex-1 bg-white rounded-2xl border border-border shadow-sm overflow-y-auto p-5 space-y-4 min-h-0">
         {messages.map((m) => (
           <div
             key={m.id}
             className={`flex gap-3 ${m.sender === "patient" ? "justify-end" : "justify-start"}`}
           >
             {m.sender !== "patient" && (
-              <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-xs font-bold shrink-0 mt-1">
+              <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-xs font-bold shrink-0 mt-1 shadow-sm">
                 AI
               </div>
             )}
-            <div className={`max-w-[80%] ${m.sender === "patient" ? "bg-primary-50 rounded-2xl rounded-tr-sm px-4 py-2.5" : ""}`}>
+            <div className={`max-w-[75%] ${
+              m.sender === "patient"
+                ? "bg-ink text-white rounded-2xl rounded-br-md px-4 py-3"
+                : "bg-canvas rounded-2xl rounded-bl-md px-4 py-3"
+            }`}>
               {m.sender === "patient" ? (
-                <p className="text-sm text-text">{m.content}</p>
+                <p className="text-sm leading-relaxed">{m.content}</p>
               ) : (
                 <Markdown text={m.content} />
               )}
-              <p className="text-xs text-text-muted mt-1">{fmt(m.created_at)}</p>
+              <p className={`text-[11px] mt-1.5 ${m.sender === "patient" ? "text-white/50" : "text-ink-faint"}`}>
+                {fmt(m.created_at)}
+              </p>
             </div>
             {m.sender === "patient" && (
-              <div className="w-8 h-8 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center text-xs font-bold shrink-0 mt-1">
+              <div className="w-8 h-8 rounded-full bg-primary-600 text-white flex items-center justify-center text-xs font-bold shrink-0 mt-1 shadow-sm">
                 You
               </div>
             )}
           </div>
         ))}
         {messages.length === 0 && (
-          <div className="flex items-center justify-center h-[280px] text-text-muted">
-            No messages yet. Start a session to begin.
+          <div className="flex flex-col items-center justify-center h-full min-h-[280px] text-ink-faint">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="mb-3 opacity-40">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            <p className="text-sm">No messages yet. Start a session to begin.</p>
           </div>
         )}
+        <div ref={messagesEndRef} />
       </div>
 
-      <form onSubmit={sendMessage} className="mt-4 flex gap-3">
+      {/* Input */}
+      <form onSubmit={sendMessage} className="mt-3 flex gap-2.5">
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder={sessionId ? "Type your message..." : "Start or resume a session"}
           disabled={busy || !sessionId}
-          className="flex-1 px-4 py-2.5 rounded-lg border border-border bg-white text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition disabled:bg-slate-100 disabled:opacity-60"
+          className="flex-1 px-5 py-3.5 rounded-full border border-border bg-white text-ink placeholder:text-ink-faint focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition shadow-sm disabled:opacity-50"
         />
         <button
           type="submit"
           disabled={busy || !sessionId}
-          className="bg-primary-600 hover:bg-primary-700 text-white font-medium px-5 py-2.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          className="bg-primary-600 hover:bg-primary-700 text-white font-semibold px-6 py-3.5 rounded-full transition-all shadow-sm hover:shadow-md disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
         >
-          Send
+          {busy ? (
+            <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25"/><path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-75"/></svg>
+          ) : (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          )}
         </button>
       </form>
     </div>

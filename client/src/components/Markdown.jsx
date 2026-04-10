@@ -9,7 +9,7 @@ export default function Markdown({ text }) {
 
   try {
     return (
-      <div className="prose prose-sm prose-slate max-w-none prose-p:my-1.5 prose-li:ml-4 prose-code:rounded prose-code:bg-slate-100 prose-code:px-1 prose-code:py-0.5 prose-code:border prose-code:border-slate-200 prose-code:text-sm prose-code:before:content-none prose-code:after:content-none prose-pre:bg-slate-50 prose-pre:border prose-pre:border-slate-200 prose-pre:rounded-lg">
+      <div className="prose prose-sm prose-stone max-w-none prose-p:my-1.5 prose-p:leading-relaxed prose-li:ml-4 prose-code:rounded-lg prose-code:bg-canvas prose-code:px-1.5 prose-code:py-0.5 prose-code:border prose-code:border-border prose-code:text-sm prose-code:font-normal prose-code:before:content-none prose-code:after:content-none prose-pre:bg-canvas prose-pre:border prose-pre:border-border prose-pre:rounded-xl prose-headings:font-display prose-headings:tracking-tight prose-a:text-primary-600 prose-a:no-underline hover:prose-a:underline prose-strong:font-semibold">
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           rehypePlugins={[rehypeRaw, rehypeSanitize]}

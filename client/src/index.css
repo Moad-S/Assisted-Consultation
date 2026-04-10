@@ -2,42 +2,87 @@
 @plugin "@tailwindcss/typography";
 
 @theme {
-  --color-primary-50: #eff6ff;
-  --color-primary-100: #dbeafe;
-  --color-primary-200: #bfdbfe;
-  --color-primary-300: #93c5fd;
-  --color-primary-400: #60a5fa;
-  --color-primary-500: #3b82f6;
-  --color-primary-600: #2563eb;
-  --color-primary-700: #1d4ed8;
-  --color-primary-800: #1e40af;
-  --color-primary-900: #1e3a8a;
+  --color-primary-50: #ecfdf5;
+  --color-primary-100: #d1fae5;
+  --color-primary-200: #a7f3d0;
+  --color-primary-300: #6ee7b7;
+  --color-primary-400: #34d399;
+  --color-primary-500: #10b981;
+  --color-primary-600: #059669;
+  --color-primary-700: #047857;
+  --color-primary-800: #065f46;
+  --color-primary-900: #064e3b;
 
-  --color-teal-50: #f0fdfa;
-  --color-teal-100: #ccfbf1;
-  --color-teal-500: #14b8a6;
-  --color-teal-600: #0d9488;
-  --color-teal-700: #0f766e;
+  --color-accent: #f97316;
+  --color-accent-soft: #fff7ed;
+  --color-accent-hover: #ea580c;
 
-  --color-success: #16a34a;
-  --color-warning: #f59e0b;
+  --color-success: #22c55e;
+  --color-warning: #eab308;
   --color-danger: #ef4444;
 
+  --color-canvas: #f7f6f3;
   --color-surface: #ffffff;
-  --color-surface-alt: #f8fafc;
-  --color-border: #e2e8f0;
-  --color-text: #0f172a;
-  --color-text-muted: #64748b;
+  --color-surface-alt: #faf9f7;
+  --color-elevated: #ffffff;
+  --color-border: #e8e5e0;
+  --color-border-subtle: #f0eee9;
 
-  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --color-ink: #1e1e2e;
+  --color-ink-muted: #78716c;
+  --color-ink-faint: #a8a29e;
+
+  --color-text: #1e1e2e;
+  --color-text-muted: #78716c;
+
+  --color-doctor: #6366f1;
+  --color-doctor-soft: #eef2ff;
+  --color-patient: #10b981;
+  --color-patient-soft: #ecfdf5;
+
+  --font-display: "Sora", system-ui, sans-serif;
+  --font-sans: "DM Sans", system-ui, sans-serif;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
-  background-color: var(--color-surface-alt);
-  color: var(--color-text);
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Subtle noise texture overlay */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.018;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
+}
+
+/* Smooth transitions on interactive elements */
+button, a, input, select, textarea {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+}
+
+/* Custom selection color */
+::selection {
+  background-color: var(--color-primary-200);
+  color: var(--color-primary-900);
 }

@@ -58,65 +58,73 @@ export default function Signup() {
   }
 
   return (
-    <div className="max-w-md mx-auto">
-      <div className="flex items-center gap-3 mb-6">
-        <button
-          type="button"
-          onClick={() => nav("/")}
-          className="text-sm text-text-muted hover:text-primary-600 transition-colors cursor-pointer"
-        >
-          &larr; Home
-        </button>
-        <Link to="/login/patient" className="text-sm text-text-muted hover:text-primary-600 transition-colors">
-          Already have an account? Log in
-        </Link>
+    <div className="max-w-sm mx-auto pt-8 sm:pt-16">
+      <div className="text-center mb-8">
+        <div className="w-14 h-14 mx-auto mb-5 rounded-2xl bg-primary-100 text-primary-700 flex items-center justify-center shadow-sm">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <line x1="19" y1="8" x2="19" y2="14"/>
+            <line x1="22" y1="11" x2="16" y2="11"/>
+          </svg>
+        </div>
+        <h1 className="font-display text-2xl font-bold text-ink tracking-tight mb-2">Create Account</h1>
+        <p className="text-sm text-ink-muted">Join Care AI to get started</p>
       </div>
 
-      <h1 className="text-2xl font-bold text-text mb-6">Create an account</h1>
-
       {already && (
-        <div className="mb-5 p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between">
+        <div className="mb-5 p-4 bg-amber-50 border border-amber-200/60 rounded-xl flex items-center justify-between">
           <span className="text-sm text-amber-800">
-            Currently signed in as <strong className="capitalize">{currentRole}</strong>
+            Signed in as <strong className="capitalize">{currentRole}</strong>
           </span>
           <button
             onClick={signOutAndStay}
-            className="text-sm text-red-600 hover:text-red-700 hover:bg-red-50 px-3 py-1.5 rounded-md transition-colors cursor-pointer"
+            className="text-sm text-danger hover:text-red-700 font-medium px-3 py-1 rounded-lg hover:bg-red-50 transition cursor-pointer"
           >
-            Sign out to switch
+            Switch
           </button>
         </div>
       )}
 
-      <div className="bg-white border border-border rounded-xl shadow-sm p-6">
+      <div className="bg-white rounded-2xl shadow-sm border border-border p-7">
         <form onSubmit={onSubmit} className="space-y-5">
           <div>
-            <label className="block text-sm font-medium text-text-muted mb-1.5">Role</label>
-            <select
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              disabled={busy || already}
-              className="w-full px-3 py-2.5 rounded-lg border border-border bg-white text-text focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition disabled:bg-slate-100 disabled:opacity-60"
-            >
-              <option value="patient">Patient</option>
-              <option value="doctor">Doctor</option>
-            </select>
+            <label className="block text-sm font-medium text-ink mb-2">I am a</label>
+            <div className="grid grid-cols-2 gap-2">
+              {["patient", "doctor"].map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => setRole(r)}
+                  disabled={busy || already}
+                  className={`py-2.5 rounded-xl text-sm font-semibold capitalize transition cursor-pointer border
+                    ${role === r
+                      ? r === "doctor"
+                        ? "bg-doctor-soft text-doctor border-doctor/30"
+                        : "bg-primary-50 text-primary-700 border-primary-300"
+                      : "bg-canvas/50 text-ink-muted border-border hover:border-ink-faint"
+                    } disabled:opacity-50`}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-text-muted mb-1.5">
-              Display name <span className="text-text-muted font-normal">(optional)</span>
+            <label className="block text-sm font-medium text-ink mb-2">
+              Display name <span className="text-ink-faint font-normal">(optional)</span>
             </label>
             <input
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               disabled={busy || already}
-              className="w-full px-3 py-2.5 rounded-lg border border-border bg-white text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition disabled:bg-slate-100 disabled:opacity-60"
+              className="w-full px-4 py-3 rounded-xl border border-border bg-canvas/50 text-ink placeholder:text-ink-faint focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition disabled:opacity-50"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-text-muted mb-1.5">Email</label>
+            <label className="block text-sm font-medium text-ink mb-2">Email</label>
             <input
               type="email"
               value={email}
@@ -124,12 +132,12 @@ export default function Signup() {
               required
               autoComplete="username"
               disabled={busy || already}
-              className="w-full px-3 py-2.5 rounded-lg border border-border bg-white text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition disabled:bg-slate-100 disabled:opacity-60"
+              className="w-full px-4 py-3 rounded-xl border border-border bg-canvas/50 text-ink placeholder:text-ink-faint focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition disabled:opacity-50"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-text-muted mb-1.5">Password</label>
+            <label className="block text-sm font-medium text-ink mb-2">Password</label>
             <input
               type="password"
               value={password}
@@ -137,23 +145,33 @@ export default function Signup() {
               required
               autoComplete="new-password"
               disabled={busy || already}
-              className="w-full px-3 py-2.5 rounded-lg border border-border bg-white text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition disabled:bg-slate-100 disabled:opacity-60"
+              className="w-full px-4 py-3 rounded-xl border border-border bg-canvas/50 text-ink placeholder:text-ink-faint focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition disabled:opacity-50"
             />
           </div>
 
           <button
             type="submit"
             disabled={busy || already}
-            className="w-full bg-primary-600 hover:bg-primary-700 text-white font-medium px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            className="w-full bg-ink text-white font-semibold px-4 py-3 rounded-full transition-all shadow-sm hover:shadow-md hover:bg-ink/85 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
-            {busy ? "Creating..." : "Sign up"}
+            {busy ? "Creating..." : "Create account"}
           </button>
 
           {error && (
-            <p className="text-sm text-danger font-medium">{error}</p>
+            <div className="flex items-center gap-2 p-3 bg-red-50 rounded-xl">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-danger shrink-0"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+              <p className="text-sm text-danger font-medium">{error}</p>
+            </div>
           )}
         </form>
       </div>
+
+      <p className="text-center text-sm text-ink-muted mt-6">
+        Already have an account?{" "}
+        <Link to="/login/patient" className="text-primary-600 hover:text-primary-700 font-semibold underline underline-offset-2 decoration-primary-300 transition">
+          Sign in
+        </Link>
+      </p>
     </div>
   );
 }

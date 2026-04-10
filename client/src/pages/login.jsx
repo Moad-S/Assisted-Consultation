@@ -30,6 +30,9 @@ export default function Login() {
   const already = auth.isLoggedIn();
   const currentRole = auth.role();
 
+  const isDoctor = role === "doctor";
+  const accentColor = isDoctor ? "doctor" : "primary";
+
   async function onSubmit(e) {
     e.preventDefault();
     setError("");
@@ -56,54 +59,58 @@ export default function Login() {
   }
 
   return (
-    <div className="max-w-md mx-auto">
-      <div className="flex items-center gap-3 mb-6">
-        <button
-          type="button"
-          onClick={() => nav("/")}
-          className="text-sm text-text-muted hover:text-primary-600 transition-colors cursor-pointer"
-        >
-          &larr; Home
-        </button>
-        <div className="flex items-center gap-2 text-sm">
-          <Link to="/login/patient" className={`font-medium transition-colors ${role === "patient" ? "text-primary-600" : "text-text-muted hover:text-primary-600"}`}>
+    <div className="max-w-sm mx-auto pt-8 sm:pt-16">
+      <div className="text-center mb-8">
+        <div className={`w-14 h-14 mx-auto mb-5 rounded-2xl flex items-center justify-center shadow-sm
+          ${isDoctor ? "bg-doctor-soft text-doctor" : "bg-primary-100 text-primary-700"}`}>
+          {isDoctor ? (
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>
+            </svg>
+          ) : (
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+          )}
+        </div>
+        <h1 className="font-display text-2xl font-bold text-ink tracking-tight mb-2">
+          {titleCase(role)} Sign In
+        </h1>
+        <div className="flex items-center justify-center gap-3 text-sm">
+          <Link
+            to="/login/patient"
+            className={`font-medium px-3 py-1.5 rounded-full transition ${role === "patient" ? "bg-primary-100 text-primary-700" : "text-ink-muted hover:text-ink hover:bg-canvas"}`}
+          >
             Patient
           </Link>
-          <span className="text-border">|</span>
-          <Link to="/login/doctor" className={`font-medium transition-colors ${role === "doctor" ? "text-teal-600" : "text-text-muted hover:text-teal-600"}`}>
+          <Link
+            to="/login/doctor"
+            className={`font-medium px-3 py-1.5 rounded-full transition ${role === "doctor" ? "bg-doctor-soft text-doctor" : "text-ink-muted hover:text-ink hover:bg-canvas"}`}
+          >
             Doctor
-          </Link>
-          <span className="text-border">|</span>
-          <Link to="/signup" className="text-text-muted hover:text-primary-600 transition-colors">
-            Create account
           </Link>
         </div>
       </div>
 
-      <h1 className="text-2xl font-bold text-text mb-6">
-        Sign in as {titleCase(role)}
-      </h1>
-
       {already && (
-        <div className="mb-5 p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between">
+        <div className="mb-5 p-4 bg-amber-50 border border-amber-200/60 rounded-xl flex items-center justify-between">
           <span className="text-sm text-amber-800">
-            Currently signed in as <strong className="capitalize">{currentRole}</strong>
+            Signed in as <strong className="capitalize">{currentRole}</strong>
           </span>
           <button
             onClick={signOutAndStay}
-            className="text-sm text-red-600 hover:text-red-700 hover:bg-red-50 px-3 py-1.5 rounded-md transition-colors cursor-pointer"
+            className="text-sm text-danger hover:text-red-700 font-medium px-3 py-1 rounded-lg hover:bg-red-50 transition cursor-pointer"
           >
-            Sign out to switch
+            Switch
           </button>
         </div>
       )}
 
-      <div className="bg-white border border-border rounded-xl shadow-sm p-6">
+      <div className="bg-white rounded-2xl shadow-sm border border-border p-7">
         <form onSubmit={onSubmit} className="space-y-5">
           <div>
-            <label className="block text-sm font-medium text-text-muted mb-1.5">
-              Email
-            </label>
+            <label className="block text-sm font-medium text-ink mb-2">Email</label>
             <input
               type="email"
               value={email}
@@ -111,14 +118,12 @@ export default function Login() {
               required
               autoComplete="username"
               disabled={busy || already}
-              className="w-full px-3 py-2.5 rounded-lg border border-border bg-white text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition disabled:bg-slate-100 disabled:opacity-60"
+              className="w-full px-4 py-3 rounded-xl border border-border bg-canvas/50 text-ink placeholder:text-ink-faint focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition disabled:opacity-50"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-text-muted mb-1.5">
-              Password
-            </label>
+            <label className="block text-sm font-medium text-ink mb-2">Password</label>
             <input
               type="password"
               value={password}
@@ -126,23 +131,37 @@ export default function Login() {
               required
               autoComplete="current-password"
               disabled={busy || already}
-              className="w-full px-3 py-2.5 rounded-lg border border-border bg-white text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition disabled:bg-slate-100 disabled:opacity-60"
+              className="w-full px-4 py-3 rounded-xl border border-border bg-canvas/50 text-ink placeholder:text-ink-faint focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition disabled:opacity-50"
             />
           </div>
 
           <button
             type="submit"
             disabled={busy || already}
-            className="w-full bg-primary-600 hover:bg-primary-700 text-white font-medium px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            className={`w-full font-semibold px-4 py-3 rounded-full transition-all shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer
+              ${isDoctor
+                ? "bg-doctor text-white hover:bg-indigo-600"
+                : "bg-primary-600 text-white hover:bg-primary-700"
+              }`}
           >
             {busy ? "Signing in..." : "Sign in"}
           </button>
 
           {error && (
-            <p className="text-sm text-danger font-medium">{error}</p>
+            <div className="flex items-center gap-2 p-3 bg-red-50 rounded-xl">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-danger shrink-0"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+              <p className="text-sm text-danger font-medium">{error}</p>
+            </div>
           )}
         </form>
       </div>
+
+      <p className="text-center text-sm text-ink-muted mt-6">
+        No account?{" "}
+        <Link to="/signup" className="text-primary-600 hover:text-primary-700 font-semibold underline underline-offset-2 decoration-primary-300 transition">
+          Create one
+        </Link>
+      </p>
     </div>
   );
 }
