@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const { pool } = require("./db");
+const { requireAuth, requireRole } = require("./middleware/authz");
 const authRoutes = require("./routes/auth");
 const patientRoutes = require("./routes/patient");
 const doctorRoutes = require("./routes/doctor");
@@ -33,25 +34,31 @@ app.get("/api/hello", (_req, res) => {
   res.json({ message: "Hello from Express 👋np" });
 });
 
-app.get("/api/ai/models", async (_req, res) => {
-  try {
-    const key = process.env.GOOGLE_API_KEY;
-    const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`
-    );
-    const data = await r.json();
-    if (!r.ok) {
-      return res.status(500).json({ ok: false, error: data?.error || data });
+app.get(
+  "/api/ai/models",
+  requireAuth,
+  requireRole("doctor"),
+  async (_req, res) => {
+    try {
+      const key = process.env.GOOGLE_API_KEY;
+      const r = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models",
+        { headers: { "x-goog-api-key": key } }
+      );
+      const data = await r.json();
+      if (!r.ok) {
+        return res.status(500).json({ ok: false, error: data?.error || data });
+      }
+      const names = (data.models || []).map((m) => ({
+        name: m.name,
+        methods: m.supportedGenerationMethods,
+      }));
+      res.json({ ok: true, models: names });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
     }
-    const names = (data.models || []).map((m) => ({
-      name: m.name,
-      methods: m.supportedGenerationMethods,
-    }));
-    res.json({ ok: true, models: names });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
-});
+);
 
 const CANDIDATES = [
   process.env.GEMINI_DEFAULT_MODEL,
@@ -68,24 +75,29 @@ async function tryPingOnce(modelName) {
   return r.response?.text?.() || "(no response)";
 }
 
-app.get("/api/ai/ping", async (_req, res) => {
-  for (const m of CANDIDATES) {
-    try {
-      const text = await tryPingOnce(m);
-      return res.json({ ok: true, model: m, text });
-    } catch (e) {
-      const detailed =
-        e?.response?.data?.error?.message ||
-        e?.cause?.message ||
-        e?.message ||
-        String(e);
-      console.error("[AI ping] model failed:", m, "|", detailed);
+app.get(
+  "/api/ai/ping",
+  requireAuth,
+  requireRole("doctor"),
+  async (_req, res) => {
+    for (const m of CANDIDATES) {
+      try {
+        const text = await tryPingOnce(m);
+        return res.json({ ok: true, model: m, text });
+      } catch (e) {
+        const detailed =
+          e?.response?.data?.error?.message ||
+          e?.cause?.message ||
+          e?.message ||
+          String(e);
+        console.error("[AI ping] model failed:", m, "|", detailed);
+      }
     }
+    return res
+      .status(500)
+      .json({ ok: false, error: "All candidate models failed" });
   }
-  return res
-    .status(500)
-    .json({ ok: false, error: "All candidate models failed" });
-});
+);
 
 app.listen(PORT, () =>
   console.log(`✅ API running at: http://localhost:${PORT}`)

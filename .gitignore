@@ -5,7 +5,8 @@ node_modules
 client/dist
 
 
-.env
+**/.env
+**/.env.*
 
 
 .vscode/*.log
