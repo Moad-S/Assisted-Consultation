@@ -2,12 +2,65 @@ const express = require("express");
 const router = express.Router();
 const { pool } = require("../db");
 const { requireAuth, requireRole } = require("../middleware/authz");
+const { endActiveSessionForPatient } = require("./patient");
 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
 const MODEL_NAME = process.env.GEMINI_MODEL || "gemini-2.0-flash-lite";
 const ENV_SYSTEM_PROMPT = (process.env.GEMINI_SYSTEM_PROMPT || "").trim();
+
+const SUPPORTED_LANGS = ["en", "es"];
+const LANG_NAMES = { en: "English", es: "Spanish" };
+
+// The exact sentence the AI must use to end the intake, per language, plus a
+// diacritic-insensitive "signature" used to detect that ending in the reply.
+const CLOSING = {
+  en: {
+    sentence:
+      "Thank you for answering my questions. It's time for you to see the doctor now.",
+    signature: "time for you to see the doctor",
+  },
+  es: {
+    sentence:
+      "Gracias por responder a mis preguntas. Ahora es el momento de que vea al médico.",
+    signature: "es el momento de que vea al medico",
+  },
+};
+
+// lowercase, strip accents/punctuation → stable matching across languages
+function normalizeForMatch(s) {
+  return String(s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+// True when the reply is a final handoff in ANY supported language
+function isClosingReply(reply) {
+  const n = normalizeForMatch(reply);
+  const hasClosing = Object.values(CLOSING).some((c) =>
+    n.includes(c.signature)
+  );
+  return hasClosing && !String(reply).includes("?");
+}
+
+async function resolveLang(req) {
+  const fromBody = req.body?.lang;
+  if (SUPPORTED_LANGS.includes(fromBody)) return fromBody;
+  try {
+    const { rows } = await pool.query(
+      `SELECT language FROM care_ai.users WHERE id = $1`,
+      [req.user.sub]
+    );
+    if (SUPPORTED_LANGS.includes(rows[0]?.language)) return rows[0].language;
+  } catch {
+    /* fall through to default */
+  }
+  return "en";
+}
 
 async function getOwnedSession(patientUserId, sessionId) {
   const { rows } = await pool.query(
@@ -117,7 +170,13 @@ async function fetchPatientContext(userId) {
   return { ctx, textBlock };
 }
 
-function stripAdvice(markdown = "") {
+// Fallbacks must end with "?" so a fully-stripped reply never trips auto-end
+const STRIP_FALLBACK = {
+  en: "Thanks for the information. Could you tell me a bit more about your symptoms?",
+  es: "Gracias por la información. ¿Podría contarme un poco más sobre sus síntomas?",
+};
+
+function stripAdvice(markdown = "", lang = "en") {
   const lines = String(markdown).split("\n");
   const cleaned = [];
 
@@ -136,16 +195,21 @@ function stripAdvice(markdown = "") {
       "**medication considerations",
       "imaging:",
       "imaging to discuss:",
+      "**pruebas posibles",
+      "**pruebas a considerar",
+      "**consideraciones sobre medicamentos",
+      "imágenes:",
+      "pruebas de imagen:",
     ];
     if (bannedHeadings.some((h) => lower.startsWith(h))) continue;
 
     const hasRecommender =
-      /(recommend|suggest|should|consider|start|begin|take|use|get|need|prescrib|dose)\b/i.test(
+      /(recommend|suggest|should|consider|start|begin|take|use|get|need|prescrib|dose|recomiend|suger|deber|considere?|tome|use|necesit|recet|dosis)\b/i.test(
         line
       ) && !line.endsWith("?");
 
     const targets =
-      /(x-?ray|ct\b|mri\b|ultrasound|scan|imaging|antibiotic|antivir|steroid|ibuprofen|naproxen|acetaminophen|paracetamol|amoxicillin|dose|mg\b)/i.test(
+      /(x-?ray|ct\b|mri\b|ultrasound|scan|imaging|antibiotic|antivir|steroid|ibuprofen|naproxen|acetaminophen|paracetamol|amoxicillin|dose|mg\b|radiograf|ecograf|tomograf|resonancia|antibiótic|antibiotic|esteroide|analg[eé]sic)/i.test(
         line
       );
 
@@ -155,9 +219,7 @@ function stripAdvice(markdown = "") {
   }
 
   const out = cleaned.join("\n").trim();
-  return out.length
-    ? out
-    : "Thanks for the information. I’ll pass this to the doctor.";
+  return out.length ? out : STRIP_FALLBACK[lang] || STRIP_FALLBACK.en;
 }
 
 router.post(
@@ -168,6 +230,8 @@ router.post(
     try {
       const sessionId = Number(req.params.sessionId);
       const { userText, kickoff } = req.body || {};
+      const lang = await resolveLang(req);
+      const langName = LANG_NAMES[lang];
 
       if (!sessionId) {
         return res.status(400).json({ error: "Missing sessionId" });
@@ -246,8 +310,11 @@ router.post(
         "- Do NOT prescribe medications or order imaging; limit to symptom clarification and triage.",
         "- Keep questions concise and one at a time.",
         ...demographicRules.map((r) => `- ${r}`),
+        "",
+        `LANGUAGE: Conduct the ENTIRE conversation in ${langName}. Every message to the patient MUST be written in ${langName}, regardless of the language the patient writes in.`,
+        `ENDING: When (and only when) you are ready to end the intake, your final message MUST be exactly this sentence in ${langName} and nothing else: "${CLOSING[lang].sentence}"`,
         kickoff
-          ? "\nKICKOFF BEHAVIOR: Greet the patient briefly (use their name if provided) and ask only ONE short question to elicit the chief concern. Do not give advice."
+          ? `\nKICKOFF BEHAVIOR: Greet the patient briefly in ${langName} (use their name if provided) and ask only ONE short question to elicit the chief concern. Do not give advice.`
           : "",
       ]
         .filter(Boolean)
@@ -279,10 +346,8 @@ router.post(
         result?.response?.candidates?.[0]?.content?.parts?.[0]?.text ||
         "(no response)";
 
-      const reply = stripAdvice(rawReply);
-      const lower = reply.toLowerCase();
-      const autoEnd = /pass this to the doctor|time .* to see the doctor|forward .* to the doctor|information .* gathered|that.s all .* need/i.test(reply)
-        && !lower.includes("?");
+      const reply = stripAdvice(rawReply, lang);
+      const autoEnd = isClosingReply(reply);
 
       const { rows: saved } = await pool.query(
         `INSERT INTO care_ai.chat_messages (session_id, sender, content)
@@ -292,10 +357,12 @@ router.post(
       );
 
       if (autoEnd) {
-        await pool.query(
-          `UPDATE care_ai.sessions SET status = 'ended', ended_at = NOW() WHERE id = $1 AND status = 'active'`,
-          [sessionId]
-        );
+        try {
+          // Ends the session and kicks off summary + profile extraction
+          await endActiveSessionForPatient(req.user.sub, sessionId);
+        } catch (e) {
+          console.error("[auto-end] failed for session", sessionId, e?.message || e);
+        }
       }
 
       return res.status(201).json({ ...saved[0], auto_end: autoEnd });

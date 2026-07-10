@@ -73,6 +73,21 @@ const SUMMARY_PROMPT = (
   process.env.GEMINI_SUMMARY_PROMPT || DEFAULT_SUMMARY_PROMPT
 ).trim();
 
+const LANG_NAMES = { en: "English", es: "Spanish" };
+
+async function getPatientLanguage(patientId) {
+  if (!patientId) return "en";
+  try {
+    const { rows } = await pool.query(
+      `SELECT language FROM care_ai.users WHERE id = $1`,
+      [patientId]
+    );
+    return rows[0]?.language === "es" ? "es" : "en";
+  } catch {
+    return "en";
+  }
+}
+
 const DEFAULT_PROFILE_PROMPT = `
 You are an EHR profile extractor. From the transcript, extract ONLY new or confirmed patient profile facts.
 Do NOT infer. If not explicitly stated, use null (or "unknown" for smoking/alcohol/drugs).
@@ -234,10 +249,16 @@ function profileHasAny(update) {
   );
 }
 
-async function extractProfileUpdateFromTranscript(transcript) {
+async function extractProfileUpdateFromTranscript(transcript, lang = "en") {
+  const langName = LANG_NAMES[lang] || "English";
+  const systemInstruction =
+    PROFILE_PROMPT +
+    `\n\nLANGUAGE: Write free-text values (conditions, medications, allergies, histories, notes) in ${langName}. ` +
+    `Keep the JSON keys exactly as specified and keep the substance_use values as the canonical tokens "yes" | "no" | "unknown" (do NOT translate those enum values).`;
+
   const model = genAI.getGenerativeModel({
     model: MODEL_NAME,
-    systemInstruction: PROFILE_PROMPT,
+    systemInstruction,
   });
 
   const result = await model.generateContent([
@@ -329,15 +350,21 @@ async function summarizeSession(sessionId) {
 
   const transcript = msgs.map((m) => `${m.sender}: ${m.content}`).join("\n");
 
+  const lang = await getPatientLanguage(patientId);
+  const langName = LANG_NAMES[lang] || "English";
+  const systemInstruction =
+    SUMMARY_PROMPT +
+    `\n\nOUTPUT LANGUAGE: Write the ENTIRE summary in ${langName}, translating the section headings and all content into ${langName}. Keep the Markdown structure and heading order intact.`;
+
   const model = genAI.getGenerativeModel({
     model: MODEL_NAME,
-    systemInstruction: SUMMARY_PROMPT,
+    systemInstruction,
   });
 
   const result = await model.generateContent([
     {
       text:
-        "Summarize the following patient conversation for a doctor in Markdown per the rules. " +
+        `Summarize the following patient conversation for a doctor in Markdown per the rules, written in ${langName}. ` +
         "Transcript:\n\n" +
         clip(transcript),
     },
@@ -357,7 +384,7 @@ async function summarizeSession(sessionId) {
 
   if (patientId) {
     try {
-      const update = await extractProfileUpdateFromTranscript(transcript);
+      const update = await extractProfileUpdateFromTranscript(transcript, lang);
       if (update) {
         await upsertPatientProfile(patientId, sessionId, update);
       }

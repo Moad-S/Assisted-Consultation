@@ -1,8 +1,11 @@
 import { useEffect, useState, useMemo, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { auth } from "../auth";
 import Markdown from "../components/Markdown";
 
 export default function PatientHome() {
+  const { t, i18n } = useTranslation();
+  const lang = i18n.resolvedLanguage?.startsWith("es") ? "es" : "en";
   const token = auth.token();
   const authHeader = { Authorization: `Bearer ${token}` };
 
@@ -13,6 +16,7 @@ export default function PatientHome() {
 
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [aiError, setAiError] = useState(null);
 
   const [sessions, setSessions] = useState([]);
   const [sessionsBusy, setSessionsBusy] = useState(false);
@@ -23,10 +27,10 @@ export default function PatientHome() {
   const LS_KEY = "patient_active_session_id";
 
   function fmt(dt) {
-    try { return new Date(dt).toLocaleString(); } catch { return dt; }
+    try { return new Date(dt).toLocaleString(lang === "es" ? "es-ES" : "en-US"); } catch { return dt; }
   }
 
-  async function jsonOrThrow(res, fallbackMsg = "Request failed") {
+  async function jsonOrThrow(res, fallbackMsg = t("errors.requestFailed")) {
     let data = null;
     try { data = await res.json(); } catch {}
     if (!res.ok) throw new Error((data && data.error) || fallbackMsg);
@@ -35,12 +39,13 @@ export default function PatientHome() {
 
   async function loadMessages(sid) {
     const res = await fetch(`/api/patient/chat/${sid}/messages`, { headers: authHeader });
-    const msgs = await jsonOrThrow(res, "Could not load messages");
+    const msgs = await jsonOrThrow(res, t("errors.couldNotLoadMessages"));
     setMessages(msgs);
   }
 
   function applySession(id) {
     setSessionId(id);
+    setAiError(null);
     if (id) {
       localStorage.setItem(LS_KEY, String(id));
       loadMessages(id).catch(() => {});
@@ -54,7 +59,7 @@ export default function PatientHome() {
     setSessionsBusy(true);
     try {
       const res = await fetch(`/api/patient/chat/history?limit=20`, { headers: authHeader });
-      const list = await jsonOrThrow(res, "Could not load sessions");
+      const list = await jsonOrThrow(res, t("errors.couldNotLoadSessions"));
       setSessions(list || []);
       if (pickId && !list.some((s) => String(s.id) === String(pickId))) setPickId("");
     } catch {} finally { setSessionsBusy(false); }
@@ -79,7 +84,7 @@ export default function PatientHome() {
       }
       try {
         const res = await fetch("/api/patient/chat/active", { headers: authHeader });
-        const { id } = await jsonOrThrow(res, "Could not check active session");
+        const { id } = await jsonOrThrow(res, t("errors.couldNotCheckActive"));
         if (id && id !== sessionId) applySession(id);
         if (!id && cached) localStorage.removeItem(LS_KEY);
       } catch {}
@@ -95,20 +100,24 @@ export default function PatientHome() {
 
   async function startNewSession() {
     setBusy(true);
+    setAiError(null);
     try {
       const res = await fetch("/api/patient/chat/start", { method: "POST", headers: authHeader });
-      const s = await jsonOrThrow(res, "Could not start session");
+      const s = await jsonOrThrow(res, t("errors.couldNotStartSession"));
       applySession(s.id);
       try {
         const aiRes = await fetch(`/api/ai/patient/chat/${s.id}/reply`, {
           method: "POST",
           headers: { "Content-Type": "application/json", ...authHeader },
-          body: JSON.stringify({ kickoff: true }),
+          body: JSON.stringify({ kickoff: true, lang }),
         });
-        const aiMsg = await jsonOrThrow(aiRes, "AI kickoff failed");
+        const aiMsg = await jsonOrThrow(aiRes, t("errors.aiKickoffFailed"));
         setMessages((prev) => [...prev, aiMsg]);
-      } catch (e) { console.error("kickoff failed:", e); }
-    } catch (e) { alert(e.message || "Failed to start session"); }
+      } catch (e) {
+        console.error("kickoff failed:", e);
+        setAiError(t("errors.aiBannerStart"));
+      }
+    } catch (e) { alert(e.message || t("errors.failedToStartSession")); }
     finally { setBusy(false); }
   }
 
@@ -122,11 +131,11 @@ export default function PatientHome() {
           headers: { "Content-Type": "application/json", ...authHeader },
           body: JSON.stringify({ sessionId }),
         }),
-        "Could not end session"
+        t("errors.couldNotEndSession")
       );
       applySession(null);
       await refreshSessionsList();
-    } catch (e) { alert(e.message || "Failed to end session"); }
+    } catch (e) { alert(e.message || t("errors.failedToEndSession")); }
     finally { setBusy(false); }
   }
 
@@ -136,41 +145,45 @@ export default function PatientHome() {
     try {
       const sid = Number(pickId);
       const res = await fetch(`/api/patient/chat/${sid}/resume`, { method: "POST", headers: authHeader });
-      const s = await jsonOrThrow(res, "Could not resume session");
+      const s = await jsonOrThrow(res, t("errors.couldNotResumeSession"));
       applySession(s.id);
       setPickId("");
-    } catch (e) { alert(e.message || "Resume failed"); }
+    } catch (e) { alert(e.message || t("errors.resumeFailed")); }
     finally { setBusy(false); }
   }
 
   async function sendMessage(e) {
     e.preventDefault();
-    if (!sessionId) { alert("Please start a session first."); return; }
+    if (!sessionId) { alert(t("errors.startSessionFirst")); return; }
     if (!text.trim()) return;
     setBusy(true);
+    setAiError(null);
     try {
       const res = await fetch(`/api/patient/chat/${sessionId}/message`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
         body: JSON.stringify({ content: text }),
       });
-      const m = await jsonOrThrow(res, "Could not send message");
+      const m = await jsonOrThrow(res, t("errors.couldNotSendMessage"));
       setMessages((prev) => [...prev, m]);
       try {
         const aiRes = await fetch(`/api/ai/patient/chat/${sessionId}/reply`, {
           method: "POST",
           headers: { "Content-Type": "application/json", ...authHeader },
-          body: JSON.stringify({ userText: text }),
+          body: JSON.stringify({ userText: text, lang }),
         });
-        const ai = await jsonOrThrow(aiRes, "AI reply failed");
+        const ai = await jsonOrThrow(aiRes, t("errors.aiReplyFailed"));
         setMessages((prev) => [...prev, ai]);
         if (ai.auto_end) {
           applySession(null);
           await refreshSessionsList();
         }
-      } catch (e) { console.error(e); }
+      } catch (e) {
+        console.error(e);
+        setAiError(t("errors.aiBannerReply"));
+      }
       setText("");
-    } catch (e2) { alert(e2.message || "Send failed"); }
+    } catch (e2) { alert(e2.message || t("errors.sendFailed")); }
     finally { setBusy(false); }
   }
 
@@ -196,8 +209,8 @@ export default function PatientHome() {
               <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
             </svg>
           </div>
-          <h1 className="font-display text-2xl font-bold text-ink tracking-tight mb-2">Patient Intake</h1>
-          <p className="text-sm text-ink-muted">Fill in your details to begin your consultation</p>
+          <h1 className="font-display text-2xl font-bold text-ink tracking-tight mb-2">{t("patient.intakeTitle")}</h1>
+          <p className="text-sm text-ink-muted">{t("patient.intakeSubtitle")}</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-border p-7">
@@ -218,16 +231,24 @@ export default function PatientHome() {
                     headers: { "Content-Type": "application/json", ...authHeader },
                     body: JSON.stringify(body),
                   }),
-                  "Could not save intake"
+                  t("errors.couldNotSaveIntake")
                 );
+                // Keep local profile in sync so ending a session later
+                // doesn't bounce back to this intake form
+                setProfile((p) => ({
+                  ...(p || {}),
+                  full_name: body.fullName,
+                  date_of_birth: body.dateOfBirth,
+                  sex: body.sex,
+                }));
                 await startNewSession();
-              } catch (e) { alert(e.message || "Failed to start"); }
+              } catch (e) { alert(e.message || t("errors.failedToStart")); }
               finally { setBusy(false); }
             }}
             className="space-y-5"
           >
             <div>
-              <label className="block text-sm font-medium text-ink mb-2">Full name</label>
+              <label className="block text-sm font-medium text-ink mb-2">{t("patient.fullName")}</label>
               <input
                 name="fullName"
                 required
@@ -238,7 +259,7 @@ export default function PatientHome() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-ink mb-2">Date of birth</label>
+              <label className="block text-sm font-medium text-ink mb-2">{t("patient.dateOfBirth")}</label>
               <input
                 type="date"
                 name="dateOfBirth"
@@ -250,7 +271,7 @@ export default function PatientHome() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-ink mb-2">Sex</label>
+              <label className="block text-sm font-medium text-ink mb-2">{t("patient.sex")}</label>
               <select
                 name="sex"
                 required
@@ -258,11 +279,11 @@ export default function PatientHome() {
                 disabled={busy}
                 className="w-full px-4 py-3 rounded-xl border border-border bg-canvas/50 text-ink focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition disabled:opacity-50"
               >
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-                <option value="intersex">Intersex</option>
-                <option value="unknown">Other</option>
-                <option value="prefer_not_to_say">Prefer not to say</option>
+                <option value="male">{t("common.sex.male")}</option>
+                <option value="female">{t("common.sex.female")}</option>
+                <option value="intersex">{t("common.sex.intersex")}</option>
+                <option value="unknown">{t("common.sex.other")}</option>
+                <option value="prefer_not_to_say">{t("common.sex.prefer_not_to_say")}</option>
               </select>
             </div>
 
@@ -271,7 +292,7 @@ export default function PatientHome() {
               disabled={busy}
               className="w-full bg-primary-600 hover:bg-primary-700 text-white font-semibold px-4 py-3 rounded-full transition-all shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
-              {busy ? "Starting..." : "Begin consultation"}
+              {busy ? t("patient.starting") : t("patient.begin")}
             </button>
           </form>
         </div>
@@ -287,7 +308,7 @@ export default function PatientHome() {
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
           <span className="text-sm font-semibold text-ink font-display">
-            Session #{sessionId ? sessionLabel(sessionId) : "\u2014"}
+            {t("patient.session", { n: sessionId ? sessionLabel(sessionId) : "\u2014" })}
           </span>
         </div>
 
@@ -297,14 +318,14 @@ export default function PatientHome() {
             disabled={busy || !sessionId}
             className="text-xs font-medium text-danger bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-full transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
           >
-            End
+            {t("patient.end")}
           </button>
           <button
             onClick={startNewSession}
             disabled={busy}
             className="text-xs font-medium text-primary-700 bg-primary-50 hover:bg-primary-100 px-3 py-1.5 rounded-full transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
           >
-            New Session
+            {t("patient.newSession")}
           </button>
         </div>
 
@@ -316,11 +337,11 @@ export default function PatientHome() {
             className="min-w-[200px] px-3 py-1.5 rounded-full border border-border text-xs bg-canvas/50 text-ink focus:ring-2 focus:ring-primary-400 transition disabled:opacity-40"
           >
             <option value="">
-              {sessionsBusy ? "Loading..." : previousSessions.length === 0 ? "No previous sessions" : "Previous sessions..."}
+              {sessionsBusy ? t("common.loading") : previousSessions.length === 0 ? t("patient.noPreviousSessions") : t("patient.previousSessions")}
             </option>
             {previousSessions.map((s) => (
               <option key={s.id} value={s.id}>
-                #{sessionLabel(s.id)} - {s.status} - {fmt(s.created_at)}
+                {t("patient.sessionOption", { n: sessionLabel(s.id), status: t(`common.status.${s.status}`, s.status), date: fmt(s.created_at) })}
               </option>
             ))}
           </select>
@@ -329,7 +350,7 @@ export default function PatientHome() {
             disabled={!pickId || busy}
             className="text-xs font-medium text-ink-muted border border-border hover:border-primary-400 hover:text-primary-700 px-3 py-1.5 rounded-full transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
           >
-            Resume
+            {t("patient.resume")}
           </button>
         </div>
       </div>
@@ -343,7 +364,7 @@ export default function PatientHome() {
           >
             {m.sender !== "patient" && (
               <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-xs font-bold shrink-0 mt-1 shadow-sm">
-                AI
+                {t("patient.avatarAI")}
               </div>
             )}
             <div className={`max-w-[75%] ${
@@ -362,7 +383,7 @@ export default function PatientHome() {
             </div>
             {m.sender === "patient" && (
               <div className="w-8 h-8 rounded-full bg-primary-600 text-white flex items-center justify-center text-xs font-bold shrink-0 mt-1 shadow-sm">
-                You
+                {t("patient.avatarYou")}
               </div>
             )}
           </div>
@@ -372,18 +393,26 @@ export default function PatientHome() {
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="mb-3 opacity-40">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-            <p className="text-sm">No messages yet. Start a session to begin.</p>
+            <p className="text-sm">{t("patient.noMessages")}</p>
           </div>
         )}
         <div ref={messagesEndRef} />
       </div>
+
+      {/* AI error banner */}
+      {aiError && (
+        <div className="mt-3 flex items-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200/60 rounded-xl">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-danger shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <p className="text-sm text-danger">{aiError}</p>
+        </div>
+      )}
 
       {/* Input */}
       <form onSubmit={sendMessage} className="mt-3 flex gap-2.5">
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={sessionId ? "Type your message..." : "Start or resume a session"}
+          placeholder={sessionId ? t("patient.typeMessage") : t("patient.startOrResume")}
           disabled={busy || !sessionId}
           className="flex-1 px-5 py-3.5 rounded-full border border-border bg-white text-ink placeholder:text-ink-faint focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition shadow-sm disabled:opacity-50"
         />

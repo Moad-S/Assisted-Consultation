@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { auth } from "../auth";
 
 async function jsonOrThrow(res, fallback = "Request failed") {
@@ -11,6 +12,7 @@ async function jsonOrThrow(res, fallback = "Request failed") {
 
 export default function Signup() {
   const nav = useNavigate();
+  const { t, i18n } = useTranslation();
   const [role, setRole] = useState("patient");
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -26,7 +28,7 @@ export default function Signup() {
     setError("");
 
     if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
+      setError(t("signup.passwordMin"));
       return;
     }
 
@@ -40,13 +42,15 @@ export default function Signup() {
           password,
           role,
           displayName: displayName || null,
+          language: i18n.resolvedLanguage?.startsWith("es") ? "es" : "en",
         }),
       });
-      const data = await jsonOrThrow(res, "Signup failed");
+      const data = await jsonOrThrow(res, t("errors.signupFailed"));
       auth.save(data);
+      if (data?.user?.language) i18n.changeLanguage(data.user.language);
       nav(role === "doctor" ? "/doctor" : "/patient", { replace: true });
     } catch (err) {
-      setError(err.message || "Signup failed");
+      setError(err.message || t("errors.signupFailed"));
     } finally {
       setBusy(false);
     }
@@ -68,20 +72,20 @@ export default function Signup() {
             <line x1="22" y1="11" x2="16" y2="11"/>
           </svg>
         </div>
-        <h1 className="font-display text-2xl font-bold text-ink tracking-tight mb-2">Create Account</h1>
-        <p className="text-sm text-ink-muted">Join Care AI to get started</p>
+        <h1 className="font-display text-2xl font-bold text-ink tracking-tight mb-2">{t("signup.title")}</h1>
+        <p className="text-sm text-ink-muted">{t("signup.subtitle")}</p>
       </div>
 
       {already && (
         <div className="mb-5 p-4 bg-amber-50 border border-amber-200/60 rounded-xl flex items-center justify-between">
           <span className="text-sm text-amber-800">
-            Signed in as <strong className="capitalize">{currentRole}</strong>
+            {t("auth.signedInAs")} <strong className="capitalize">{t(`common.roles.${currentRole}`)}</strong>
           </span>
           <button
             onClick={signOutAndStay}
             className="text-sm text-danger hover:text-red-700 font-medium px-3 py-1 rounded-lg hover:bg-red-50 transition cursor-pointer"
           >
-            Switch
+            {t("auth.switch")}
           </button>
         </div>
       )}
@@ -89,7 +93,7 @@ export default function Signup() {
       <div className="bg-white rounded-2xl shadow-sm border border-border p-7">
         <form onSubmit={onSubmit} className="space-y-5">
           <div>
-            <label className="block text-sm font-medium text-ink mb-2">I am a</label>
+            <label className="block text-sm font-medium text-ink mb-2">{t("signup.iAmA")}</label>
             <div className="grid grid-cols-2 gap-2">
               {["patient", "doctor"].map((r) => (
                 <button
@@ -105,7 +109,7 @@ export default function Signup() {
                       : "bg-canvas/50 text-ink-muted border-border hover:border-ink-faint"
                     } disabled:opacity-50`}
                 >
-                  {r}
+                  {t(`common.roles.${r}`)}
                 </button>
               ))}
             </div>
@@ -113,7 +117,7 @@ export default function Signup() {
 
           <div>
             <label className="block text-sm font-medium text-ink mb-2">
-              Display name <span className="text-ink-faint font-normal">(optional)</span>
+              {t("signup.displayName")} <span className="text-ink-faint font-normal">{t("common.optional")}</span>
             </label>
             <input
               value={displayName}
@@ -124,7 +128,7 @@ export default function Signup() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-ink mb-2">Email</label>
+            <label className="block text-sm font-medium text-ink mb-2">{t("common.email")}</label>
             <input
               type="email"
               value={email}
@@ -137,7 +141,7 @@ export default function Signup() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-ink mb-2">Password</label>
+            <label className="block text-sm font-medium text-ink mb-2">{t("common.password")}</label>
             <input
               type="password"
               value={password}
@@ -154,7 +158,7 @@ export default function Signup() {
             disabled={busy || already}
             className="w-full bg-ink text-white font-semibold px-4 py-3 rounded-full transition-all shadow-sm hover:shadow-md hover:bg-ink/85 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
-            {busy ? "Creating..." : "Create account"}
+            {busy ? t("signup.creating") : t("signup.createAccount")}
           </button>
 
           {error && (
@@ -167,9 +171,9 @@ export default function Signup() {
       </div>
 
       <p className="text-center text-sm text-ink-muted mt-6">
-        Already have an account?{" "}
+        {t("signup.haveAccount")}{" "}
         <Link to="/login/patient" className="text-primary-600 hover:text-primary-700 font-semibold underline underline-offset-2 decoration-primary-300 transition">
-          Sign in
+          {t("signup.signIn")}
         </Link>
       </p>
     </div>

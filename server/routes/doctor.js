@@ -112,17 +112,38 @@ function normalizeYesNoUnknown(v) {
   if (!v) return null;
   const t = safeText(v).trim().toLowerCase();
   if (!t) return null;
-  if (t.includes("addict")) return "addiction";
-  if (["yes", "y", "true", "uses", "drinks", "smokes"].includes(t))
+  if (t.includes("addict") || t.includes("adicc") || t.includes("adicto"))
+    return "addiction";
+  if (
+    [
+      "yes", "y", "true", "uses", "drinks", "smokes",
+      "sí", "si", "s", "verdadero", "consume", "bebe", "fuma",
+    ].includes(t)
+  )
     return "yes";
-  if (["no", "n", "false", "denies", "none"].includes(t)) return "no";
-  if (["unknown", "unk"].includes(t)) return "unknown";
+  if (
+    [
+      "no", "n", "false", "denies", "none",
+      "falso", "niega", "ninguno", "nunca",
+    ].includes(t)
+  )
+    return "no";
+  if (["unknown", "unk", "desconocido", "desc", "n/a"].includes(t))
+    return "unknown";
   return t;
 }
 
 function isUnknownLike(s) {
   const t = safeText(s).trim().toLowerCase();
-  return !t || t === "unknown" || t === "not asked" || t === "not documented";
+  return (
+    !t ||
+    t === "unknown" ||
+    t === "not asked" ||
+    t === "not documented" ||
+    t === "desconocido" ||
+    t === "no preguntado" ||
+    t === "no documentado"
+  );
 }
 
 function stripLeadingArticles(s) {
@@ -138,41 +159,83 @@ function titleCaseFirst(s) {
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
-function canonicalizeAllergy(s) {
+function canonicalizeAllergy(s, lang = "en") {
   let t = stripLeadingArticles(s);
   t = t.replace(/[.,;:]+$/g, "").trim();
   t = t.replace(/\s+/g, " ").trim();
   if (!t) return "";
 
-  if (!/\ballergy\b/i.test(t)) t = `${t} allergy`;
-  t = t.replace(/\ballergy\s+allergy\b/i, "allergy").trim();
+  const hasAllergyWord = /\b(allergy|allergic|alergia|al[eé]rgico|al[eé]rgica)\b/i.test(t);
+
+  if (lang === "es") {
+    // Spanish reads "Alergia a X"; only add the prefix if not already present
+    if (!hasAllergyWord) t = `Alergia a ${t}`;
+  } else {
+    if (!hasAllergyWord) t = `${t} allergy`;
+    t = t.replace(/\ballergy\s+allergy\b/i, "allergy").trim();
+  }
 
   return titleCaseFirst(t);
 }
 
 function wordToNumberMaybe(w) {
   const m = {
-    one: 1,
-    two: 2,
-    three: 3,
-    four: 4,
-    five: 5,
-    six: 6,
-    seven: 7,
-    eight: 8,
-    nine: 9,
-    ten: 10,
+    one: 1, two: 2, three: 3, four: 4, five: 5,
+    six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+    uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5,
+    seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10,
   };
   const key = safeText(w).trim().toLowerCase();
   return m[key] != null ? String(m[key]) : null;
 }
 
+// singular/plural forms per time unit, English + Spanish
+const UNIT_FORMS = {
+  day: ["day", "days"],
+  week: ["week", "weeks"],
+  month: ["month", "months"],
+  year: ["year", "years"],
+  día: ["día", "días"],
+  dia: ["día", "días"],
+  semana: ["semana", "semanas"],
+  mes: ["mes", "meses"],
+  año: ["año", "años"],
+  ano: ["año", "años"],
+};
+const UNIT_SINGULARIZE = {
+  days: "day", weeks: "week", months: "month", years: "year",
+  días: "día", dias: "dia", semanas: "semana", meses: "mes",
+  años: "año", anos: "ano",
+};
+
 function pluralizeUnit(nStr, unit) {
   const n = Number(nStr);
-  const u = safeText(unit).toLowerCase();
-  if (!n || n === 1) return u;
-  return u.endsWith("s") ? u : `${u}s`;
+  let key = safeText(unit).toLowerCase();
+  if (UNIT_SINGULARIZE[key]) key = UNIT_SINGULARIZE[key];
+  const forms = UNIT_FORMS[key];
+  if (!forms) return safeText(unit).toLowerCase();
+  return !n || n === 1 ? forms[0] : forms[1];
 }
+
+// Time-unit alternation used across duration regexes (English + Spanish)
+const UNIT_RE = "(day|days|week|weeks|month|months|year|years|día|dia|días|dias|semana|semanas|mes|meses|año|ano|años|anos)";
+
+// Duration regexes built from UNIT_RE so they match English + Spanish units.
+// In each, group 1 is the number (or number-word) and group 2 is the unit.
+const RX_PAREN_DUR = new RegExp(`\\(\\s*(\\d+)\\s*${UNIT_RE}\\s*\\)\\s*$`, "i");
+const RX_X_DUR = new RegExp(`\\s*(?:x|×)\\s*(\\d+)\\s*${UNIT_RE}\\s*$`, "i");
+const RX_FOR_NUM = new RegExp(
+  `\\s*(?:for|durante|por)\\s+(\\d+)\\s*${UNIT_RE}\\s*$`,
+  "i"
+);
+const RX_FOR_WORD = new RegExp(
+  `\\s*(?:for\\s+the\\s+duration\\s+of|durante\\s+la\\s+duración\\s+de)\\s+([a-zñáéíóú]+)\\s*${UNIT_RE}\\s*$`,
+  "i"
+);
+const RX_DUR_OF_NUM = new RegExp(
+  `\\s*(?:duration\\s+of|duración\\s+de)\\s+(\\d+)\\s*${UNIT_RE}\\s*$`,
+  "i"
+);
 
 function canonicalizePrescription(s) {
   let t = stripLeadingArticles(s);
@@ -181,44 +244,18 @@ function canonicalizePrescription(s) {
   if (!t) return "";
 
   // If already ends with "(N unit)" normalize pluralization
-  t = t.replace(
-    /\(\s*(\d+)\s*(day|week|month|year)s?\s*\)\s*$/i,
-    (_m, n, unit) => `(${n} ${pluralizeUnit(n, unit)})`
-  );
+  t = t.replace(RX_PAREN_DUR, (_m, n, unit) => `(${n} ${pluralizeUnit(n, unit)})`);
 
-  const hasParenDuration = /\(\s*\d+\s*(day|week|month|year)s?\s*\)\s*$/i.test(
-    t
-  );
+  const hasParenDuration = RX_PAREN_DUR.test(t);
 
   if (!hasParenDuration) {
-    // x 7 days / x7 days / × 7 days
-    t = t.replace(
-      /\s*(?:x|×)\s*(\d+)\s*(day|week|month|year)s?\s*$/i,
-      (_m, n, unit) => ` (${n} ${pluralizeUnit(n, unit)})`
-    );
-
-    // for 7 days
-    t = t.replace(
-      /\s*for\s+(\d+)\s*(day|week|month|year)s?\s*$/i,
-      (_m, n, unit) => ` (${n} ${pluralizeUnit(n, unit)})`
-    );
-
-    // for the duration of two days
-    t = t.replace(
-      /\s*for\s+the\s+duration\s+of\s+([a-z]+)\s*(day|week|month|year)s?\s*$/i,
-      (_m, wordNum, unit) => {
-        const n = wordToNumberMaybe(wordNum);
-        return n
-          ? ` (${n} ${pluralizeUnit(n, unit)})`
-          : ` (${wordNum} ${unit})`;
-      }
-    );
-
-    // duration of 7 days
-    t = t.replace(
-      /\s*(?:duration\s+of)\s+(\d+)\s*(day|week|month|year)s?\s*$/i,
-      (_m, n, unit) => ` (${n} ${pluralizeUnit(n, unit)})`
-    );
+    t = t.replace(RX_X_DUR, (_m, n, unit) => ` (${n} ${pluralizeUnit(n, unit)})`);
+    t = t.replace(RX_FOR_NUM, (_m, n, unit) => ` (${n} ${pluralizeUnit(n, unit)})`);
+    t = t.replace(RX_FOR_WORD, (_m, wordNum, unit) => {
+      const n = wordToNumberMaybe(wordNum);
+      return n ? ` (${n} ${pluralizeUnit(n, unit)})` : ` (${wordNum} ${unit})`;
+    });
+    t = t.replace(RX_DUR_OF_NUM, (_m, n, unit) => ` (${n} ${pluralizeUnit(n, unit)})`);
   }
 
   t = t.replace(/\)\s*\(/g, ") (").trim();
@@ -233,19 +270,12 @@ function canonicalizePatientMedication(s) {
   t = t.replace(/\s+/g, " ").trim();
   if (!t) return "";
 
-  // strip trailing duration formats
-  t = t.replace(/\(\s*\d+\s*(day|week|month|year)s?\s*\)\s*$/i, "").trim();
-  t = t.replace(/\s*(?:x|×)\s*\d+\s*(day|week|month|year)s?\s*$/i, "").trim();
-  t = t.replace(/\s*for\s+\d+\s*(day|week|month|year)s?\s*$/i, "").trim();
-  t = t
-    .replace(
-      /\s*for\s+the\s+duration\s+of\s+[a-z]+\s*(day|week|month|year)s?\s*$/i,
-      ""
-    )
-    .trim();
-  t = t
-    .replace(/\s*(?:duration\s+of)\s+\d+\s*(day|week|month|year)s?\s*$/i, "")
-    .trim();
+  // strip trailing duration formats (English + Spanish)
+  t = t.replace(RX_PAREN_DUR, "").trim();
+  t = t.replace(RX_X_DUR, "").trim();
+  t = t.replace(RX_FOR_NUM, "").trim();
+  t = t.replace(RX_FOR_WORD, "").trim();
+  t = t.replace(RX_DUR_OF_NUM, "").trim();
 
   t = t.replace(/\s+/g, " ").trim();
   return titleCaseFirst(t);
@@ -259,6 +289,8 @@ function canonicalizeFamilyHistoryItem(s) {
 
   t = t.replace(/^family history of\s+/i, "").trim();
   t = t.replace(/^fhx\s+of\s+/i, "").trim();
+  t = t.replace(/^antecedentes familiares de\s+/i, "").trim();
+  t = t.replace(/^antecedente familiar de\s+/i, "").trim();
 
   return titleCaseFirst(t);
 }
@@ -270,7 +302,7 @@ function canonicalizeSocialHistoryItem(s) {
   if (!t) return "";
 
   if (
-    /\b(smok|tobacco|cigarette|alcohol|drink|drugs?|cannabis|marijuana|opioid|cocaine)\b/i.test(
+    /\b(smok|tobacco|cigarette|alcohol|drink|drugs?|cannabis|marijuana|opioid|cocaine|fum|tabaco|cigarrillo|beber|bebe|drogas?|marihuana|opioide|cocaína|cocaina)\b/i.test(
       t
     )
   ) {
@@ -314,18 +346,12 @@ function normalizeSubstanceUse(existingObj, patchObj) {
 function isPrescriptionLikeItem(s) {
   const t = safeText(s).trim();
   if (!t) return false;
-  if (/^discontinue\s*:/i.test(t)) return true;
-  if (/\(\s*\d+\s*(day|week|month|year)s?\s*\)\s*$/i.test(t)) return true;
-  if (/\b(?:x|×)\s*\d+\s*(day|week|month|year)s?\s*$/i.test(t)) return true;
-  if (/\bfor\s+\d+\s*(day|week|month|year)s?\s*$/i.test(t)) return true;
-  if (
-    /\bfor\s+the\s+duration\s+of\s+[a-z]+\s*(day|week|month|year)s?\s*$/i.test(
-      t
-    )
-  )
-    return true;
-  if (/\bduration\s+of\s+\d+\s*(day|week|month|year)s?\s*$/i.test(t))
-    return true;
+  if (/^(discontinue|suspender|suspende|descontinuar)\s*:/i.test(t)) return true;
+  if (RX_PAREN_DUR.test(t)) return true;
+  if (RX_X_DUR.test(t)) return true;
+  if (RX_FOR_NUM.test(t)) return true;
+  if (RX_FOR_WORD.test(t)) return true;
+  if (RX_DUR_OF_NUM.test(t)) return true;
   return false;
 }
 
@@ -423,13 +449,20 @@ async function upsertProfileData(patientId, sessionId, merged) {
   }
 }
 
-async function extractProfilePatchFromDoctorNoteAI(noteMd) {
+async function extractProfilePatchFromDoctorNoteAI(noteMd, lang = "en") {
   const text = safeText(noteMd).trim();
   if (!text) return null;
 
+  const langName = lang === "es" ? "Spanish" : "English";
+  const systemInstruction =
+    NOTE_PROFILE_EXTRACT_PROMPT +
+    `\n\nLANGUAGE: The note is written in ${langName}. Write all free-text values in ${langName}. ` +
+    `Keep the JSON keys and substance_use enum values ("yes"|"no"|"unknown"|"addiction") exactly as specified. ` +
+    `When a duration is present, format it in ${langName} as "(N días)"/"(N semanas)"/"(N meses)" for Spanish or "(N days)"/"(N weeks)"/"(N months)" for English.`;
+
   const model = genAI.getGenerativeModel({
     model: MODEL_NAME,
-    systemInstruction: NOTE_PROFILE_EXTRACT_PROMPT,
+    systemInstruction,
   });
 
   const result = await model.generateContent([
@@ -478,7 +511,7 @@ async function extractProfilePatchFromDoctorNoteAI(noteMd) {
 
   if (patch.allergies) {
     patch.allergies = dedupePreserve(
-      patch.allergies.map(canonicalizeAllergy).filter(Boolean)
+      patch.allergies.map((a) => canonicalizeAllergy(a, lang)).filter(Boolean)
     );
   }
 
@@ -553,6 +586,7 @@ async function mergeDoctorNoteIntoPatientProfile({
   doctorId,
   noteMd,
   patch,
+  lang = "en",
 }) {
   const existing = await readExistingProfileData(patientId);
   if (existing === null) return;
@@ -598,7 +632,8 @@ async function mergeDoctorNoteIntoPatientProfile({
   if (patch?.doctor_prescriptions)
     mergeList("doctor_prescriptions", canonicalizePrescription);
 
-  if (patch?.allergies) mergeList("allergies", canonicalizeAllergy);
+  if (patch?.allergies)
+    mergeList("allergies", (a) => canonicalizeAllergy(a, lang));
   if (patch?.chronic_conditions) mergeList("chronic_conditions", null);
   if (patch?.past_surgical_history) mergeList("past_surgical_history", null);
   if (patch?.other_notes) mergeList("other_notes", null);
@@ -809,6 +844,18 @@ router.post(
 
       const doctorId = req.user.sub;
 
+      // The note is authored in the doctor's language; drive extraction with it
+      let lang = "en";
+      try {
+        const { rows: drows } = await pool.query(
+          `SELECT language FROM care_ai.users WHERE id = $1`,
+          [doctorId]
+        );
+        if (drows[0]?.language === "es") lang = "es";
+      } catch {
+        /* default to en */
+      }
+
       const { rows } = await pool.query(
         `
         INSERT INTO care_ai.doctor_session_notes (session_id, patient_id, doctor_id, note_md)
@@ -823,7 +870,17 @@ router.post(
       );
       const saved = rows[0];
 
-      const patch = await extractProfilePatchFromDoctorNoteAI(noteMd);
+      // AI extraction is best-effort: the note is already saved, so an AI
+      // failure must not turn the request into an error
+      let patch = null;
+      try {
+        patch = await extractProfilePatchFromDoctorNoteAI(noteMd, lang);
+      } catch (err) {
+        console.error(
+          "[doctor note] profile extraction failed (non-fatal):",
+          err?.message || err
+        );
+      }
 
       await mergeDoctorNoteIntoPatientProfile({
         patientId,
@@ -831,6 +888,7 @@ router.post(
         doctorId,
         noteMd,
         patch: patch || {},
+        lang,
       });
 
       return res.json({

@@ -1,0 +1,40 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - link "Care AI" [ref=e6] [cursor=pointer]:
+        - /url: /
+        - img [ref=e8]
+        - generic [ref=e10]: Care AI
+      - navigation [ref=e11]:
+        - link "Patient" [ref=e12] [cursor=pointer]:
+          - /url: /login/patient
+        - link "Doctor" [ref=e13] [cursor=pointer]:
+          - /url: /login/doctor
+        - link "Get Started" [ref=e14] [cursor=pointer]:
+          - /url: /signup
+  - main [ref=e15]:
+    - generic [ref=e16]:
+      - generic [ref=e17]:
+        - generic [ref=e18]: AI-Powered Triage
+        - heading "Smarter patient intake, faster care" [level=1] [ref=e20]:
+          - text: Smarter patient
+          - text: intake, faster care
+        - paragraph [ref=e21]: Intelligent pre-consultation triage that connects patients and doctors seamlessly, powered by AI.
+      - generic [ref=e22]:
+        - link "I'm a Patient Start your pre-consultation intake with our AI assistant" [ref=e23] [cursor=pointer]:
+          - /url: /login/patient
+          - generic [ref=e25]:
+            - img [ref=e27]
+            - heading "I'm a Patient" [level=3] [ref=e30]
+            - paragraph [ref=e31]: Start your pre-consultation intake with our AI assistant
+        - link "I'm a Doctor Review patient sessions, notes & profiles" [ref=e32] [cursor=pointer]:
+          - /url: /login/doctor
+          - generic [ref=e34]:
+            - img [ref=e36]
+            - heading "I'm a Doctor" [level=3] [ref=e38]
+            - paragraph [ref=e39]: Review patient sessions, notes & profiles
+      - paragraph [ref=e40]:
+        - text: New here?
+        - link "Create an account" [ref=e41] [cursor=pointer]:
+          - /url: /signup
+      - generic [ref=e44]: Hello from Express 👋np

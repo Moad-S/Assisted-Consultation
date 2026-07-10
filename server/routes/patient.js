@@ -82,15 +82,24 @@ async function upsertProfileFromSession(sessionId) {
       .slice(-10000);
 
     const { rows: srows } = await pool.query(
-      `SELECT patient_id FROM care_ai.chat_sessions WHERE id = $1`,
+      `SELECT s.patient_id, u.language
+         FROM care_ai.chat_sessions s
+         JOIN care_ai.users u ON u.id = s.patient_id
+        WHERE s.id = $1`,
       [sessionId]
     );
     if (!srows.length) return;
     const patientId = srows[0].patient_id;
+    const langName = srows[0].language === "es" ? "Spanish" : "English";
 
     const model = genAI.getGenerativeModel({ model: MODEL_NAME });
     const resp = await model.generateContent([
       { text: PROFILE_JSON_PROMPT },
+      {
+        text:
+          `LANGUAGE: Write free-text array values in ${langName}. ` +
+          `Keep JSON keys and the categorical enum values (smoking/alcohol/drugs: "yes|no|former|unknown", pregnancy_status: "pregnant|not_pregnant|unknown") exactly as specified — do NOT translate those.`,
+      },
       { text: `TRANSCRIPT:\n${transcript}` },
     ]);
 
@@ -123,7 +132,7 @@ router.get("/me", requireAuth, requireRole("patient"), async (req, res) => {
   const userId = req.user.sub;
   const { rows } = await pool.query(
     `
-    SELECT u.id, u.email, u.display_name, u.display_name AS full_name, p.date_of_birth AS date_of_birth, p.sex
+    SELECT u.id, u.email, u.display_name, u.display_name AS full_name, u.language, p.date_of_birth AS date_of_birth, p.sex
       FROM care_ai.users u
       JOIN care_ai.patients p ON p.user_id = u.id
      WHERE u.id = $1
@@ -330,11 +339,13 @@ router.post(
       return res.status(400).json({ error: "content required" });
 
     const { rows: own } = await pool.query(
-      `SELECT 1 FROM care_ai.chat_sessions WHERE id = $1 AND patient_id = $2`,
+      `SELECT status FROM care_ai.chat_sessions WHERE id = $1 AND patient_id = $2`,
       [sid, userId]
     );
     if (!own.length)
       return res.status(404).json({ error: "session not found" });
+    if (own[0].status !== "active")
+      return res.status(400).json({ error: "Session is not active" });
 
     const ins = await pool.query(
       `
@@ -377,3 +388,4 @@ router.get(
 );
 
 module.exports = router;
+module.exports.endActiveSessionForPatient = endActiveSessionForPatient;

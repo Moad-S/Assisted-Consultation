@@ -1,0 +1,34 @@
+- generic [ref=e85]:
+  - banner [ref=e86]:
+    - generic [ref=e87]:
+      - link "Care AI" [ref=e88] [cursor=pointer]:
+        - /url: /
+        - img [ref=e90]
+        - generic [ref=e92]: Care AI
+      - navigation [ref=e93]:
+        - generic [ref=e95]: patient
+        - link "Dashboard" [ref=e96] [cursor=pointer]:
+          - /url: /patient
+        - button "Sign out" [ref=e97] [cursor=pointer]
+  - main [ref=e98]:
+    - generic [ref=e99]:
+      - generic [ref=e100]:
+        - img [ref=e102]
+        - heading "Patient Intake" [level=1] [ref=e105]
+        - paragraph [ref=e106]: Fill in your details to begin your consultation
+      - generic [ref=e108]:
+        - generic [ref=e109]:
+          - generic [ref=e110]: Full name
+          - textbox [ref=e111]: Codex UI Patient
+        - generic [ref=e112]:
+          - generic [ref=e113]: Date of birth
+          - textbox [ref=e114]
+        - generic [ref=e115]:
+          - generic [ref=e116]: Sex
+          - combobox [ref=e117]:
+            - option "Male" [selected]
+            - option "Female"
+            - option "Intersex"
+            - option "Other"
+            - option "Prefer not to say"
+        - button "Begin consultation" [ref=e118] [cursor=pointer]

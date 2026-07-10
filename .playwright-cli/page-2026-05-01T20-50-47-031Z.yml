@@ -1,0 +1,40 @@
+- generic [ref=e45]:
+  - banner [ref=e46]:
+    - generic [ref=e47]:
+      - link "Care AI" [ref=e48] [cursor=pointer]:
+        - /url: /
+        - img [ref=e50]
+        - generic [ref=e52]: Care AI
+      - navigation [ref=e53]:
+        - link "Patient" [ref=e54] [cursor=pointer]:
+          - /url: /login/patient
+        - link "Doctor" [ref=e55] [cursor=pointer]:
+          - /url: /login/doctor
+        - link "Get Started" [ref=e56] [cursor=pointer]:
+          - /url: /signup
+  - main [ref=e57]:
+    - generic [ref=e58]:
+      - generic [ref=e59]:
+        - img [ref=e61]
+        - heading "Create Account" [level=1] [ref=e64]
+        - paragraph [ref=e65]: Join Care AI to get started
+      - generic [ref=e67]:
+        - generic [ref=e68]:
+          - generic [ref=e69]: I am a
+          - generic [ref=e70]:
+            - button "patient" [ref=e71] [cursor=pointer]
+            - button "doctor" [ref=e72] [cursor=pointer]
+        - generic [ref=e73]:
+          - generic [ref=e74]: Display name (optional)
+          - textbox [ref=e75]
+        - generic [ref=e76]:
+          - generic [ref=e77]: Email
+          - textbox [ref=e78]
+        - generic [ref=e79]:
+          - generic [ref=e80]: Password
+          - textbox [ref=e81]
+        - button "Create account" [ref=e82] [cursor=pointer]
+      - paragraph [ref=e83]:
+        - text: Already have an account?
+        - link "Sign in" [ref=e84] [cursor=pointer]:
+          - /url: /login/patient

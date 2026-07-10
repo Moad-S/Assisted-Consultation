@@ -26,7 +26,7 @@ app.get('/api/health/db', async (_req, res) => {
   }
 });
 
-const clientDist = '/sessions/affectionate-kind-davinci/client_dist';
+const clientDist = path.join(__dirname, '..', 'client', 'dist');
 app.use(express.static(clientDist));
 app.get('*', (req, res) => {
   res.sendFile(path.join(clientDist, 'index.html'));

@@ -7,7 +7,9 @@ import {
   Navigate,
   useNavigate,
 } from "react-router-dom";
+import { useTranslation, Trans } from "react-i18next";
 import ProtectedRoute from "./components/ProtectedRoute";
+import LanguageToggle from "./components/LanguageToggle";
 import Login from "./pages/login";
 import PatientHome from "./pages/patienthome";
 import DoctorHome from "./pages/doctorhome";
@@ -16,6 +18,7 @@ import { auth } from "./auth";
 
 function Layout({ children }) {
   const nav = useNavigate();
+  const { t } = useTranslation();
   const [, setTick] = useState(0);
   const loggedIn = auth.isLoggedIn();
   const role = auth.role();
@@ -42,16 +45,17 @@ function Layout({ children }) {
           </Link>
 
           <nav className="flex items-center gap-2">
+            <LanguageToggle />
             {!loggedIn ? (
               <>
                 <Link to="/login/patient" className="text-sm font-medium text-ink-muted hover:text-ink px-3 py-2 rounded-lg hover:bg-canvas transition">
-                  Patient
+                  {t("nav.patient")}
                 </Link>
                 <Link to="/login/doctor" className="text-sm font-medium text-ink-muted hover:text-ink px-3 py-2 rounded-lg hover:bg-canvas transition">
-                  Doctor
+                  {t("nav.doctor")}
                 </Link>
                 <Link to="/signup" className="bg-ink text-white text-sm font-medium px-4 py-2 rounded-full hover:bg-ink/85 transition shadow-sm hover:shadow-md">
-                  Get Started
+                  {t("nav.getStarted")}
                 </Link>
               </>
             ) : (
@@ -59,20 +63,20 @@ function Layout({ children }) {
                 <span className="text-sm text-ink-muted mr-1">
                   <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold tracking-wide uppercase
                     ${role === "doctor" ? "bg-doctor-soft text-doctor" : "bg-patient-soft text-patient"}`}>
-                    {role}
+                    {t(`common.roles.${role}`)}
                   </span>
                 </span>
                 <Link
                   to={dashboardHref}
                   className="text-sm font-medium text-ink-muted hover:text-ink px-3 py-2 rounded-lg hover:bg-canvas transition"
                 >
-                  Dashboard
+                  {t("nav.dashboard")}
                 </Link>
                 <button
                   onClick={signOut}
                   className="text-sm text-ink-muted hover:text-danger px-3 py-2 rounded-lg hover:bg-red-50 transition cursor-pointer"
                 >
-                  Sign out
+                  {t("nav.signOut")}
                 </button>
               </>
             )}
@@ -88,7 +92,8 @@ function Layout({ children }) {
 }
 
 function Home() {
-  const [apiMsg, setApiMsg] = useState("checking...");
+  const { t } = useTranslation();
+  const [apiMsg, setApiMsg] = useState(t("home.apiChecking"));
   const [apiOk, setApiOk] = useState(null);
   const loggedIn = auth.isLoggedIn();
   const role = auth.role();
@@ -98,8 +103,8 @@ function Home() {
     fetch("/api/hello")
       .then((r) => r.json())
       .then((d) => { setApiMsg(d.message); setApiOk(true); })
-      .catch(() => { setApiMsg("API not reachable"); setApiOk(false); });
-  }, []);
+      .catch(() => { setApiMsg(t("home.apiUnreachable")); setApiOk(false); });
+  }, [t]);
 
   return (
     <Layout>
@@ -107,14 +112,13 @@ function Home() {
         <div className="text-center mb-16">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary-50 text-primary-700 text-xs font-semibold tracking-wide uppercase mb-6">
             <span className="w-1.5 h-1.5 rounded-full bg-primary-500 animate-pulse" />
-            AI-Powered Triage
+            {t("home.badge")}
           </div>
           <h1 className="font-display text-5xl sm:text-6xl font-bold text-ink tracking-tight leading-[1.1] mb-5">
-            Smarter patient<br />
-            <span className="text-primary-600">intake</span>, faster care
+            <Trans i18nKey="home.heroTitle" components={{ hl: <span className="text-primary-600" /> }} />
           </h1>
           <p className="text-lg text-ink-muted max-w-xl mx-auto leading-relaxed">
-            Intelligent pre-consultation triage that connects patients and doctors seamlessly, powered by AI.
+            {t("home.heroSubtitle")}
           </p>
         </div>
 
@@ -124,7 +128,7 @@ function Home() {
               to={dashboardHref}
               className="group inline-flex items-center gap-3 bg-ink text-white font-medium px-8 py-4 rounded-full shadow-lg hover:shadow-xl hover:bg-ink/90 transition-all"
             >
-              Open {role} dashboard
+              {t("home.openDashboard", { role: t(`common.roles.${role}`) })}
               <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
             </Link>
           </div>
@@ -144,10 +148,10 @@ function Home() {
                     </svg>
                   </div>
                   <h3 className="font-display text-lg font-semibold text-ink mb-1">
-                    I'm a Patient
+                    {t("home.patientCardTitle")}
                   </h3>
                   <p className="text-sm text-ink-muted leading-relaxed">
-                    Start your pre-consultation intake with our AI assistant
+                    {t("home.patientCardBody")}
                   </p>
                 </div>
               </Link>
@@ -164,19 +168,19 @@ function Home() {
                     </svg>
                   </div>
                   <h3 className="font-display text-lg font-semibold text-ink mb-1">
-                    I'm a Doctor
+                    {t("home.doctorCardTitle")}
                   </h3>
                   <p className="text-sm text-ink-muted leading-relaxed">
-                    Review patient sessions, notes &amp; profiles
+                    {t("home.doctorCardBody")}
                   </p>
                 </div>
               </Link>
             </div>
 
             <p className="text-center text-sm text-ink-muted">
-              New here?{" "}
+              {t("home.newHere")}{" "}
               <Link to="/signup" className="text-primary-600 hover:text-primary-700 font-semibold underline underline-offset-2 decoration-primary-300 hover:decoration-primary-500 transition">
-                Create an account
+                {t("home.createAccount")}
               </Link>
             </p>
           </>

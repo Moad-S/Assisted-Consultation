@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS care_ai.users (
   email       VARCHAR(255) NOT NULL UNIQUE,
   display_name VARCHAR(255),
   password_hash TEXT,
+  language    VARCHAR(5) NOT NULL DEFAULT 'en',
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

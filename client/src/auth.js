@@ -20,7 +20,19 @@ export const auth = {
       role: user.role,
       exp: payload?.exp || null,
       user: { id: user.id, email: user.email, display_name: user.display_name },
+      language: user.language || null,
     };
+    localStorage.setItem(KEY, JSON.stringify(data));
+  },
+
+  language() {
+    return this.load()?.language || null;
+  },
+
+  setLanguage(language) {
+    const data = this.load();
+    if (!data) return;
+    data.language = language;
     localStorage.setItem(KEY, JSON.stringify(data));
   },
 

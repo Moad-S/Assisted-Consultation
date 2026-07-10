@@ -31,7 +31,7 @@ app.get("/api/health/db", async (_req, res) => {
 });
 
 app.get("/api/hello", (_req, res) => {
-  res.json({ message: "Hello from Express 👋np" });
+  res.json({ message: "Hello from Express 👋" });
 });
 
 app.get(

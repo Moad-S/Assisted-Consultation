@@ -1,10 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { auth } from "../auth";
-
-function titleCase(s) {
-  return s ? s[0].toUpperCase() + s.slice(1) : s;
-}
 
 async function jsonOrThrow(res, fallback = "Request failed") {
   let data = null;
@@ -15,6 +12,7 @@ async function jsonOrThrow(res, fallback = "Request failed") {
 
 export default function Login() {
   const nav = useNavigate();
+  const { t, i18n } = useTranslation();
   const { who } = useParams();
   const role = who === "doctor" ? "doctor" : "patient";
 
@@ -43,11 +41,12 @@ export default function Login() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim(), password, role }),
       });
-      const data = await jsonOrThrow(res, "Login failed");
+      const data = await jsonOrThrow(res, t("errors.loginFailed"));
       auth.save(data);
+      if (data?.user?.language) i18n.changeLanguage(data.user.language);
       nav(role === "doctor" ? "/doctor" : "/patient", { replace: true });
     } catch (err) {
-      setError(err.message || "Login failed");
+      setError(err.message || t("errors.loginFailed"));
     } finally {
       setBusy(false);
     }
@@ -75,20 +74,20 @@ export default function Login() {
           )}
         </div>
         <h1 className="font-display text-2xl font-bold text-ink tracking-tight mb-2">
-          {titleCase(role)} Sign In
+          {t("login.title", { role: t(`common.roles.${role}`) })}
         </h1>
         <div className="flex items-center justify-center gap-3 text-sm">
           <Link
             to="/login/patient"
             className={`font-medium px-3 py-1.5 rounded-full transition ${role === "patient" ? "bg-primary-100 text-primary-700" : "text-ink-muted hover:text-ink hover:bg-canvas"}`}
           >
-            Patient
+            {t("nav.patient")}
           </Link>
           <Link
             to="/login/doctor"
             className={`font-medium px-3 py-1.5 rounded-full transition ${role === "doctor" ? "bg-doctor-soft text-doctor" : "text-ink-muted hover:text-ink hover:bg-canvas"}`}
           >
-            Doctor
+            {t("nav.doctor")}
           </Link>
         </div>
       </div>
@@ -96,13 +95,13 @@ export default function Login() {
       {already && (
         <div className="mb-5 p-4 bg-amber-50 border border-amber-200/60 rounded-xl flex items-center justify-between">
           <span className="text-sm text-amber-800">
-            Signed in as <strong className="capitalize">{currentRole}</strong>
+            {t("auth.signedInAs")} <strong className="capitalize">{t(`common.roles.${currentRole}`)}</strong>
           </span>
           <button
             onClick={signOutAndStay}
             className="text-sm text-danger hover:text-red-700 font-medium px-3 py-1 rounded-lg hover:bg-red-50 transition cursor-pointer"
           >
-            Switch
+            {t("auth.switch")}
           </button>
         </div>
       )}
@@ -110,7 +109,7 @@ export default function Login() {
       <div className="bg-white rounded-2xl shadow-sm border border-border p-7">
         <form onSubmit={onSubmit} className="space-y-5">
           <div>
-            <label className="block text-sm font-medium text-ink mb-2">Email</label>
+            <label className="block text-sm font-medium text-ink mb-2">{t("common.email")}</label>
             <input
               type="email"
               value={email}
@@ -123,7 +122,7 @@ export default function Login() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-ink mb-2">Password</label>
+            <label className="block text-sm font-medium text-ink mb-2">{t("common.password")}</label>
             <input
               type="password"
               value={password}
@@ -144,7 +143,7 @@ export default function Login() {
                 : "bg-primary-600 text-white hover:bg-primary-700"
               }`}
           >
-            {busy ? "Signing in..." : "Sign in"}
+            {busy ? t("login.signingIn") : t("login.signIn")}
           </button>
 
           {error && (
@@ -157,9 +156,9 @@ export default function Login() {
       </div>
 
       <p className="text-center text-sm text-ink-muted mt-6">
-        No account?{" "}
+        {t("login.noAccount")}{" "}
         <Link to="/signup" className="text-primary-600 hover:text-primary-700 font-semibold underline underline-offset-2 decoration-primary-300 transition">
-          Create one
+          {t("login.createOne")}
         </Link>
       </p>
     </div>
