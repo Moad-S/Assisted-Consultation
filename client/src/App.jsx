@@ -102,7 +102,7 @@ function Home() {
   useEffect(() => {
     fetch("/api/hello")
       .then((r) => r.json())
-      .then((d) => { setApiMsg(d.message); setApiOk(true); })
+      .then(() => { setApiMsg(t("home.apiConnected")); setApiOk(true); })
       .catch(() => { setApiMsg(t("home.apiUnreachable")); setApiOk(false); });
   }, [t]);
 

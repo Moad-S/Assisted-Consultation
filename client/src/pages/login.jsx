@@ -5,7 +5,9 @@ import { auth } from "../auth";
 
 async function jsonOrThrow(res, fallback = "Request failed") {
   let data = null;
-  try { data = await res.json(); } catch {}
+  try { data = await res.json(); } catch {
+    // Use the caller's fallback when the response has no JSON body.
+  }
   if (!res.ok) throw new Error((data && data.error) || fallback);
   return data;
 }
@@ -29,7 +31,6 @@ export default function Login() {
   const currentRole = auth.role();
 
   const isDoctor = role === "doctor";
-  const accentColor = isDoctor ? "doctor" : "primary";
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -42,8 +43,21 @@ export default function Login() {
         body: JSON.stringify({ email: email.trim(), password, role }),
       });
       const data = await jsonOrThrow(res, t("errors.loginFailed"));
+      const language = i18n.resolvedLanguage?.startsWith("es") ? "es" : "en";
       auth.save(data);
-      if (data?.user?.language) i18n.changeLanguage(data.user.language);
+      auth.setLanguage(language);
+      try {
+        await fetch("/api/auth/language", {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${auth.token()}`,
+          },
+          body: JSON.stringify({ language }),
+        });
+      } catch {
+        // Keep the selected UI language even if account sync is temporarily unavailable.
+      }
       nav(role === "doctor" ? "/doctor" : "/patient", { replace: true });
     } catch (err) {
       setError(err.message || t("errors.loginFailed"));

@@ -32,7 +32,9 @@ export default function PatientHome() {
 
   async function jsonOrThrow(res, fallbackMsg = t("errors.requestFailed")) {
     let data = null;
-    try { data = await res.json(); } catch {}
+    try { data = await res.json(); } catch {
+      // Use the caller's fallback when the response has no JSON body.
+    }
     if (!res.ok) throw new Error((data && data.error) || fallbackMsg);
     return data;
   }
@@ -62,7 +64,9 @@ export default function PatientHome() {
       const list = await jsonOrThrow(res, t("errors.couldNotLoadSessions"));
       setSessions(list || []);
       if (pickId && !list.some((s) => String(s.id) === String(pickId))) setPickId("");
-    } catch {} finally { setSessionsBusy(false); }
+    } catch {
+      // Keeping the last known session list is less disruptive than clearing it.
+    } finally { setSessionsBusy(false); }
   }
 
   useEffect(() => {
@@ -87,7 +91,9 @@ export default function PatientHome() {
         const { id } = await jsonOrThrow(res, t("errors.couldNotCheckActive"));
         if (id && id !== sessionId) applySession(id);
         if (!id && cached) localStorage.removeItem(LS_KEY);
-      } catch {}
+      } catch {
+        // Leave the UI usable even if the active-session lookup is unavailable.
+      }
       refreshSessionsList();
     })();
   }, [token]);

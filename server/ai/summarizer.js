@@ -75,6 +75,34 @@ const SUMMARY_PROMPT = (
 
 const LANG_NAMES = { en: "English", es: "Spanish" };
 
+const SPANISH_DIFFERENTIAL_HEADINGS = new Set([
+  "top 3 differential diagnoses",
+  "top 3 diagnosticos diferenciales",
+]);
+
+function normalizeHeading(heading) {
+  return String(heading || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+// Models occasionally preserve the English "Top 3" prefix in an otherwise
+// Spanish summary. Normalize only that Markdown heading after generation.
+function localizeSummaryHeadings(markdown, lang) {
+  if (lang !== "es") return markdown;
+
+  return String(markdown || "").replace(
+    /^(#{1,6}\s+)(.+?)\s*$/gm,
+    (line, prefix, heading) =>
+      SPANISH_DIFFERENTIAL_HEADINGS.has(normalizeHeading(heading))
+        ? `${prefix}Tres diagnósticos diferenciales principales`
+        : line
+  );
+}
+
 async function getPatientLanguage(patientId) {
   if (!patientId) return "en";
   try {
@@ -352,9 +380,14 @@ async function summarizeSession(sessionId) {
 
   const lang = await getPatientLanguage(patientId);
   const langName = LANG_NAMES[lang] || "English";
+  const headingInstruction =
+    lang === "es"
+      ? '\nFor the differential section, use this exact heading: "## Tres diagnósticos diferenciales principales".'
+      : "";
   const systemInstruction =
     SUMMARY_PROMPT +
-    `\n\nOUTPUT LANGUAGE: Write the ENTIRE summary in ${langName}, translating the section headings and all content into ${langName}. Keep the Markdown structure and heading order intact.`;
+    `\n\nOUTPUT LANGUAGE: Write the ENTIRE summary in ${langName}, translating the section headings and all content into ${langName}. Keep the Markdown structure and heading order intact.` +
+    headingInstruction;
 
   const model = genAI.getGenerativeModel({
     model: MODEL_NAME,
@@ -370,10 +403,11 @@ async function summarizeSession(sessionId) {
     },
   ]);
 
-  const md =
+  const rawMd =
     result?.response?.text?.() ||
     result?.response?.candidates?.[0]?.content?.parts?.[0]?.text ||
     "(summary unavailable)";
+  const md = localizeSummaryHeadings(rawMd, lang);
 
   await pool.query(
     `UPDATE care_ai.chat_sessions

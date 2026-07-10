@@ -46,6 +46,7 @@
     "newHere": "¿Nuevo por aquí?",
     "createAccount": "Crea una cuenta",
     "apiChecking": "comprobando...",
+    "apiConnected": "API conectada",
     "apiUnreachable": "API no disponible"
   },
   "login": {
@@ -127,6 +128,18 @@
     "rowSex": "Sexo",
     "rowDob": "Fecha de nacimiento",
     "rowRegistered": "Registrado",
+    "substanceLabels": {
+      "smoking": "Tabaquismo",
+      "alcohol": "Alcohol",
+      "drugs": "Drogas",
+      "values": {
+        "yes": "Sí",
+        "no": "No",
+        "former": "Exfumador",
+        "unknown": "Desconocido",
+        "addiction": "Adicción"
+      }
+    },
     "profileRows": {
       "age": "Edad",
       "sexFromChat": "Sexo (del chat)",

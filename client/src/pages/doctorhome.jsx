@@ -43,6 +43,32 @@ export default function DoctorHome() {
     try { return new Date(dt).toLocaleString(locale); } catch { return dt ?? ""; }
   }
 
+  function formatSex(value) {
+    const key = String(value || "").trim().toLowerCase();
+    const translated = ["male", "female", "intersex", "other", "prefer_not_to_say"].includes(key)
+      ? t(`common.sex.${key}`)
+      : null;
+    return translated || String(value || "\u2014");
+  }
+
+  function isSubstanceUse(value) {
+    return (
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      ["smoking", "alcohol", "drugs"].some((key) => value[key] !== undefined)
+    );
+  }
+
+  function formatSubstanceValue(value) {
+    if (value === null || value === undefined || value === "") {
+      return t("common.notDocumented");
+    }
+    return t(`doctor.substanceLabels.values.${String(value).trim().toLowerCase()}`, {
+      defaultValue: String(value),
+    });
+  }
+
   function ProfileRow({ label, value }) {
     if (
       value === null || value === undefined ||
@@ -53,7 +79,18 @@ export default function DoctorHome() {
     return (
       <div className="mb-4">
         <div className="text-xs font-semibold text-ink-muted uppercase tracking-wider mb-1.5">{label}</div>
-        {Array.isArray(value) ? (
+        {isSubstanceUse(value) ? (
+          <dl className="space-y-2 text-sm text-ink">
+            {["smoking", "alcohol", "drugs"].map((key) => (
+              value[key] !== undefined && (
+                <div key={key} className="flex justify-between gap-4">
+                  <dt className="text-ink-muted">{t(`doctor.substanceLabels.${key}`)}</dt>
+                  <dd className="font-medium text-right">{formatSubstanceValue(value[key])}</dd>
+                </div>
+              )
+            ))}
+          </dl>
+        ) : Array.isArray(value) ? (
           <ul className="space-y-1">
             {value.map((v, i) => (
               <li key={i} className="flex items-start gap-2 text-sm text-ink">
@@ -113,7 +150,9 @@ export default function DoctorHome() {
         return r.json();
       });
       if (n && n.note_md) { setNote(n.note_md); setNoteMeta({ updated_at: n.updated_at }); }
-    } catch {}
+    } catch {
+      // A missing note is equivalent to an empty note for this session.
+    }
   }
 
   async function saveNote() {
@@ -434,7 +473,7 @@ export default function DoctorHome() {
                       {[
                         [t("doctor.rowName"), profile.full_name || profile.name || "\u2014"],
                         [t("doctor.rowEmail"), profile.email],
-                        [t("doctor.rowSex"), profile.sex ? String(profile.sex) : "\u2014"],
+                        [t("doctor.rowSex"), formatSex(profile.sex)],
                         [t("doctor.rowDob"), profile.date_of_birth ? fmtDate(profile.date_of_birth) : "\u2014"],
                         [t("doctor.rowRegistered"), fmtDate(profile.created_at)],
                       ].map(([label, val]) => (

@@ -5,7 +5,9 @@ import { auth } from "../auth";
 
 async function jsonOrThrow(res, fallback = "Request failed") {
   let data = null;
-  try { data = await res.json(); } catch {}
+  try { data = await res.json(); } catch {
+    // Use the caller's fallback when the response has no JSON body.
+  }
   if (!res.ok) throw new Error((data && data.error) || fallback);
   return data;
 }
@@ -47,7 +49,6 @@ export default function Signup() {
       });
       const data = await jsonOrThrow(res, t("errors.signupFailed"));
       auth.save(data);
-      if (data?.user?.language) i18n.changeLanguage(data.user.language);
       nav(role === "doctor" ? "/doctor" : "/patient", { replace: true });
     } catch (err) {
       setError(err.message || t("errors.signupFailed"));
