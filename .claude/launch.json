@@ -6,13 +6,20 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["index.js"],
       "cwd": "server",
-      "port": 5001
+      "port": 5001,
+      "autoPort": false
     },
     {
       "name": "client",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["vite", "--port", "5173", "--strictPort"],
       "cwd": "client",
+      "port": 5173,
+      "autoPort": false
+    },
+    {
+      "name": "attach-client",
+      "url": "http://localhost:5173",
       "port": 5173
     }
   ]
